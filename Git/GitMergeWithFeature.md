@@ -2,7 +2,7 @@
 
 This guide explains how to merge the latest changes from the master branch into your feature branch while ensuring your changes are preserved.
 
-![image](https://github.com/user-attachments/assets/9dc4b8d8-a978-4c24-b41d-27d38cd9ef07)
+<img width="678" alt="image" src="https://github.com/user-attachments/assets/a2af7e4e-5cd8-4540-9a3d-ee43301bfdab" />
 
 
 ## Steps to Merge Master into Feature Branch

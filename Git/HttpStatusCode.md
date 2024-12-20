@@ -2,6 +2,9 @@
 
 This document provides a summary of common HTTP status codes, grouped by their categories.
 
+![image](https://github.com/user-attachments/assets/87ea2c33-4e59-49e4-a6c1-e26117618ba5)
+
+
 ## 2xx Success Codes
 
 These status codes indicate that the request was successfully processed by the server.

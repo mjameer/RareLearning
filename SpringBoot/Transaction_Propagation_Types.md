@@ -1,6 +1,7 @@
 # Transaction Propagation Types in Spring Framework
 
-<img width="416" alt="image" src="https://github.com/user-attachments/assets/8d7eac6a-aae3-43e0-ad3a-fe98ea94ef53" />
+<img width="835" alt="image" src="https://github.com/user-attachments/assets/63dae97f-1a66-4f73-a102-08c6da5516f3" />
+
 
 ## 1. **Propagation.REQUIRED**  
 ### Use Case:  

@@ -1,5 +1,5 @@
 
-### Micrometer Metrics Implementation: A Complete Guide for Error Occurrences, Execution Times, and System Resource Usage
+### Micrometer Metrics Implementation in SpringBoot
 
 #### Why Use Micrometer?
 
@@ -24,12 +24,12 @@ import org.springframework.context.annotation.Configuration;
 @Configuration
 public class MetricsConfig {
 
-    private static final String TAG = "tsp";
+    private static final String TAG = "appName";
 
     // Counter to track AWS API errors
-    @Bean("awsApiCounter")
-    public Counter getAwsApiCounter(MeterRegistry registry) {
-        return registry.counter("aws_api_error_count", TAG, "aws api");
+    @Bean("trackerServiceApiCounter")
+    public Counter gettrackerServiceApiCounter(MeterRegistry registry) {
+        return registry.counter("tracker_service_api_error_count", TAG, "tracker api");
     }
 
     // Timer to measure execution time of methods
@@ -40,7 +40,7 @@ public class MetricsConfig {
 }
 ```
 
-- **Tags**: Tags add context to metrics (e.g., `tsp` and `aws api` for error tracking).
+- **Tags**: Tags add context to metrics (e.g., `appName` and `tracker api` for error tracking).
 - **Counters**: Track occurrences (e.g., errors).
 - **Timers**: Measure execution time of methods.
 
@@ -62,7 +62,7 @@ public class ErrorTrackingService {
 
     private final Counter errorCounter;
 
-    public ErrorTrackingService(@Qualifier("awsApiCounter") Counter errorCounter) {
+    public ErrorTrackingService(@Qualifier("trackerServiceApiCounter") Counter errorCounter) {
         this.errorCounter = errorCounter;
     }
 
@@ -296,7 +296,7 @@ Spring Boot Actuator exposes metrics endpoints for monitoring:
 
 3. Access metrics via `/actuator/metrics` endpoint:
 
-   - Example: `http://localhost:8080/actuator/metrics/aws_api_error_count`
+   - Example: `http://localhost:8080/actuator/metrics/tracker_service_api_error_count`
 
 ---
 

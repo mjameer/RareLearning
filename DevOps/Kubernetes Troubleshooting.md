@@ -15,6 +15,8 @@ kubectl get all -A
 
 <img width="921" alt="image" src="https://github.com/user-attachments/assets/237d999b-4fc5-4360-b845-fe03aceb83b9" />
 
+#### get data via json path , you can pipe | jq to get the data in pretty format 
+
 <img width="1142" alt="image" src="https://github.com/user-attachments/assets/611de44e-66f0-4eee-9ea3-b2ea501f130e" />
 
 ---

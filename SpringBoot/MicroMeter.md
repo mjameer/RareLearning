@@ -1,5 +1,5 @@
 
-### Micrometer Metrics Implementation in SpringBoot
+### Tracking Metrics with Micrometer in Spring Boot: Errors, Timings, and Resources
 
 #### Why Use Micrometer?
 

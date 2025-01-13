@@ -53,3 +53,16 @@ kubectl get all -A
 
 
 <img width="1336" alt="image" src="https://github.com/user-attachments/assets/06a0a5cf-0bb0-4a63-8143-b1e413119775" />
+
+
+#### auth can-i
+
+
+<img width="523" alt="image" src="https://github.com/user-attachments/assets/d8090099-35a1-4fac-9609-28ae1f580118" />
+
+
+
+#### above is with current user following is to identify for the provided user 
+
+<img width="424" alt="image" src="https://github.com/user-attachments/assets/e1746418-d68c-4e3b-a869-87732a123cfd" />
+

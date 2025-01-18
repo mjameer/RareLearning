@@ -9,6 +9,8 @@ Micrometer is a powerful metrics instrumentation library that enables developers
 - **Measuring Execution Times**: Monitors performance to ensure that services are operating within expected time limits.
 - **Monitoring System Resource Usage**: Provides insights into resource utilization for better scalability and efficiency.
 
+![openart-5f786712b9ba402f8d385d8648d51616_raw](https://github.com/user-attachments/assets/a693659d-fe37-4395-9e3a-b1a8a961364e)
+
 ---
 
 ### Step 1: Configuration of Metrics

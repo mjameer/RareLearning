@@ -27,6 +27,8 @@ L4 load balancing operates at the **transport layer** of the OSI model, primaril
 ❌ No deep packet inspection (cannot route based on HTTP headers or content).
 ❌ Limited control over traffic at the application layer.
 
+<img width="621" alt="image" src="https://github.com/user-attachments/assets/34c041ae-6840-4bb0-85ac-7d94a33cc585" />
+
 ---
 ## Layer 7 (L7) Load Balancing
 ### Overview
@@ -69,8 +71,6 @@ L7 load balancing operates at the **application layer**, making decisions based 
 ### Example Technologies:
 - **L4 Load Balancers**: Nginx (TCP/UDP mode), HAProxy (L4 mode), AWS ELB (Classic LB), IPVS.
 - **L7 Load Balancers**: Nginx (HTTP mode), HAProxy (L7 mode), AWS ALB, Traefik, Envoy.
-
-<img width="621" alt="image" src="https://github.com/user-attachments/assets/34c041ae-6840-4bb0-85ac-7d94a33cc585" />
 
 ---
 ## Conclusion

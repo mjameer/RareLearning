@@ -1,8 +1,5 @@
 # L4 vs. L7 Load Balancing
 
-<img width="529" alt="image" src="https://github.com/user-attachments/assets/a2f611fa-991e-49fe-a30c-b46f178e2828" />
-
-
 ## Introduction
 Load balancing is a critical component of distributed systems, helping distribute traffic across multiple servers to ensure availability, reliability, and performance. Load balancers operate at different layers of the OSI model, with Layer 4 (L4) and Layer 7 (L7) being the most common.
 

@@ -1,4 +1,43 @@
 
+### Lombok: Generate Modern Getters and Setters
+
+#### Question
+Is there a way for Lombok to generate modern-style getters and setters, such as:
+- Getter: `name()` instead of `getName()`
+- Setter: `name(String name)` instead of `setName(String name)`
+
+#### Solution
+Yes! Lombok supports this using `@Accessors(fluent = true)`. This allows you to use Java 14+ record-style accessors.
+
+```java
+import lombok.Getter;
+import lombok.Setter;
+import lombok.experimental.Accessors;
+
+@Getter
+@Setter
+@Accessors(fluent = true) // Enables name() and name(String name)
+public class Person {
+    private String name;
+}
+```
+
+#### **Generated Methods**
+- **Getter:** `public String name()`
+- **Setter:** `public void name(String name)`
+
+
+#### **Explanation**
+- `@Accessors(fluent = true)` removes the `get` and `set` prefixes, making accessors look like Java records or Kotlin-style functions.
+
+#### **Enforce This Style Globally?**
+You can configure this in your Lombok settings (`lombok.config`) to enforce it across your project:
+```properties
+lombok.accessors.fluent = true
+```
+
+---
+
 ### Commonly Used Lombok Annotations
 
 - `@Getter`
@@ -21,12 +60,6 @@
 - `@SuperBuilder`
 - `@UtilityClass`
 - `@ExtensionMethod`
-
-# Hidden Gems in Lombok
-
-Lombok provides powerful annotations to simplify Java development. Here are some lesser-known but incredibly useful Lombok annotations:
-
-## Annotations Overview
 
 #### `@SneakyThrows`
 - **Purpose**: Suppresses checked exceptions without `try-catch`.
@@ -116,40 +149,3 @@ Lombok provides powerful annotations to simplify Java development. Here are some
   ```
 
 ---
-
-### Lombok: Generate Modern Getters and Setters
-
-#### Question
-Is there a way for Lombok to generate modern-style getters and setters, such as:
-- Getter: `name()` instead of `getName()`
-- Setter: `name(String name)` instead of `setName(String name)`
-
-#### Solution
-Yes! Lombok supports this using `@Accessors(fluent = true)`. This allows you to use Java 14+ record-style accessors.
-
-```java
-import lombok.Getter;
-import lombok.Setter;
-import lombok.experimental.Accessors;
-
-@Getter
-@Setter
-@Accessors(fluent = true) // Enables name() and name(String name)
-public class Person {
-    private String name;
-}
-```
-
-#### **Generated Methods**
-- **Getter:** `public String name()`
-- **Setter:** `public void name(String name)`
-
-
-#### **Explanation**
-- `@Accessors(fluent = true)` removes the `get` and `set` prefixes, making accessors look like Java records or Kotlin-style functions.
-
-#### **Enforce This Style Globally?**
-You can configure this in your Lombok settings (`lombok.config`) to enforce it across your project:
-```properties
-lombok.accessors.fluent = true
-```

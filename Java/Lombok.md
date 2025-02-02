@@ -22,9 +22,6 @@
 - `@UtilityClass`
 - `@ExtensionMethod`
 
-
-<img width="886" alt="Screen Shot 2024-11-24 at 9 32 00 PM" src="https://github.com/user-attachments/assets/a019d0df-0713-4448-ad0d-f240b58a0d5b">
-
 # Hidden Gems in Lombok
 
 Lombok provides powerful annotations to simplify Java development. Here are some lesser-known but incredibly useful Lombok annotations:

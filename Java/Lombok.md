@@ -11,6 +11,16 @@
 - `@Builder`
 - `@Value`
 
+### Hidden Gems in Lombok
+
+- `@SneakyThrows`
+- `@Cleanup`
+- `@Synchronized`
+- `@Slf4j`
+- `@Delegate`
+- `@SuperBuilder`
+- `@UtilityClass`
+- `@ExtensionMethod`
 
 
 <img width="886" alt="Screen Shot 2024-11-24 at 9 32 00 PM" src="https://github.com/user-attachments/assets/a019d0df-0713-4448-ad0d-f240b58a0d5b">
@@ -21,7 +31,7 @@ Lombok provides powerful annotations to simplify Java development. Here are some
 
 ## Annotations Overview
 
-### `@SneakyThrows`
+#### `@SneakyThrows`
 - **Purpose**: Suppresses checked exceptions without `try-catch`.
 - **Example**:
   ```java
@@ -31,7 +41,7 @@ Lombok provides powerful annotations to simplify Java development. Here are some
   }
   ```
 
-### `@Cleanup`
+#### `@Cleanup`
 - **Purpose**: Ensures resources are properly closed.
 - **Example**:
   ```java
@@ -39,7 +49,7 @@ Lombok provides powerful annotations to simplify Java development. Here are some
   InputStream inputStream = new FileInputStream("file.txt");
   ```
 
-### `@Synchronized`
+#### `@Synchronized`
 - **Purpose**: Thread-safe methods using private locks.
 - **Example**:
   ```java
@@ -49,7 +59,7 @@ Lombok provides powerful annotations to simplify Java development. Here are some
   }
   ```
 
-### `@Slf4j`
+#### `@Slf4j`
 - **Purpose**: Adds an SLF4J logger to your class.
 - **Example**:
   ```java
@@ -61,7 +71,7 @@ Lombok provides powerful annotations to simplify Java development. Here are some
   }
   ```
 
-### `@Delegate`
+#### `@Delegate`
 - **Purpose**: Delegates methods to another object.
 - **Example**:
   ```java
@@ -69,7 +79,7 @@ Lombok provides powerful annotations to simplify Java development. Here are some
   private final List<String> myList = new ArrayList<>();
   ```
 
-### `@SuperBuilder`
+#### `@SuperBuilder`
 - **Purpose**: Builds complex objects with inheritance support.
 - **Example**:
   ```java
@@ -84,7 +94,7 @@ Lombok provides powerful annotations to simplify Java development. Here are some
   }
   ```
 
-### `@UtilityClass`
+#### `@UtilityClass`
 - **Purpose**: Marks a class as a utility class with static methods.
 - **Example**:
   ```java
@@ -96,7 +106,7 @@ Lombok provides powerful annotations to simplify Java development. Here are some
   }
   ```
 
-### `@ExtensionMethod`
+#### `@ExtensionMethod`
 - **Purpose**: Enables extension methods for existing classes.
 - **Example**:
   ```java
@@ -108,6 +118,7 @@ Lombok provides powerful annotations to simplify Java development. Here are some
   }
   ```
 
+---
 
 ### Lombok: Generate Modern Getters and Setters
 

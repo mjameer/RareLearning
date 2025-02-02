@@ -1,8 +1,5 @@
 
-### Lombok: Generate Modern Getters and Setters
-
-#### Question
-Is there a way for Lombok to generate modern-style getters and setters, such as:
+#### Question : Is there a way for Lombok to generate modern-style getters and setters, such as:
 - Getter: `name()` instead of `getName()`
 - Setter: `name(String name)` instead of `setName(String name)`
 

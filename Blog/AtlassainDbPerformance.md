@@ -25,7 +25,7 @@ Bitbucket, which uses **PostgreSQL** as its database, employs a **replication la
   - Directs the read to a **replica that has caught up** with the latest user write, ensuring consistency.
 
 
-##### . Get the Current LSN
+##### a. Get the Current LSN
 To retrieve the **current LSN** of the master node, use:
 
 ```sql

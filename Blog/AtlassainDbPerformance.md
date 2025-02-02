@@ -15,7 +15,7 @@ Bitbucket, which uses **PostgreSQL** as its database, employs a **replication la
 - Each write entry in WAL is assigned a **Log Sequence Number (LSN)**, which helps determine replication progress.
 
 #### **3. Tracking the Latest User Write LSN**
-- After a user **writes** to the master, the system **stores the latest LSN** for that user in **Redis**.
+- After a user **writes** to the master, the system **stores the latest LSN** for that user in **Redis** cache, mapping userID → LSN.
 - The stored LSN serves as a checkpoint indicating the latest write this user expects to see.
 
 #### **4. Determining the Correct Replica for Reads**
@@ -24,159 +24,111 @@ Bitbucket, which uses **PostgreSQL** as its database, employs a **replication la
   - Queries all **replicas** for their current **LSN** progress.
   - Directs the read to a **replica that has caught up** with the latest user write, ensuring consistency.
 
+
+##### . Get the Current LSN
+To retrieve the **current LSN** of the master node, use:
+
+```sql
+SELECT pg_current_wal_lsn();
+```
+
+**Output Example:**
+```
+ pg_current_wal_lsn 
+--------------------
+ 0/16B2C50
+(1 row)
+```
+
+This query provides the **current WAL position** of the master database.
+
+---
+
+##### b. Check a Replica’s Last Applied LSN
+To check the **latest LSN applied** on a read replica, run:
+
+```sql
+SELECT pg_last_wal_replay_lsn();
+```
+
+**Output Example:**
+```
+ pg_last_wal_replay_lsn 
+-------------------------
+ 0/16B2A40
+(1 row)
+```
+
+This LSN represents the **last committed transaction** on the replica.
+
+---
+
+##### c. Find Replication Lag
+To calculate the **difference** between the master and the replica (replication lag), use:
+
+```sql
+SELECT pg_wal_lsn_diff(pg_current_wal_lsn(), pg_last_wal_replay_lsn());
+```
+
+**Output Example:**
+```
+ pg_wal_lsn_diff 
+------------------
+            512
+(1 row)
+```
+
+A higher difference means the **replica is lagging** behind the master.
+
+---
+
+##### d. Monitor LSN Across All Replicas
+To get LSN details for all connected replicas, use:
+
+```sql
+SELECT application_name, client_addr, state, sent_lsn, write_lsn, flush_lsn, replay_lsn 
+FROM pg_stat_replication;
+```
+
+**Output Example:**
+```
+ application_name | client_addr | state  | sent_lsn | write_lsn | flush_lsn | replay_lsn 
+------------------+------------+--------+----------+-----------+-----------+------------
+ replica1        | 192.168.1.2 | streaming | 0/16B2C50 | 0/16B2A40 | 0/16B2A40 | 0/16B2A40
+ replica2        | 192.168.1.3 | streaming | 0/16B2C50 | 0/16B2B00 | 0/16B2B00 | 0/16B2B00
+(2 rows)
+```
+
+This query helps monitor replication status and lag across all read replicas.
+
+---
+
+##### e. Ensuring Read-Your-Write Consistency
+To ensure **read-your-write consistency**, route read queries only to replicas **where the `replay_lsn` is greater than or equal to the user’s last written LSN**.
+
+```sql
+SELECT pg_wal_lsn_diff('user_write_lsn', pg_last_wal_replay_lsn()) <= 0;
+```
+
+If the result is `TRUE`, the replica has caught up; otherwise, fallback to the master for consistency.
+
+---
+
+## Summary
+| Query | Purpose |
+|--------|---------|
+| `SELECT pg_current_wal_lsn();` | Get the current LSN on master |
+| `SELECT pg_last_wal_replay_lsn();` | Get the last applied LSN on a replica |
+| `SELECT pg_wal_lsn_diff(pg_current_wal_lsn(), pg_last_wal_replay_lsn());` | Check replication lag |
+| `SELECT * FROM pg_stat_replication;` | Monitor all replicas |
+
+Using these queries, you can **optimize replication strategies**, detect **lagging replicas**, and ensure **consistent reads across distributed databases**.
+
+
 #### **5. Performance Impact**
 - The system reduces **read queries hitting the master** by **50%**, significantly improving scalability.
 - The overhead for checking LSNs (~10ms) is **tolerable**, ensuring fast and scalable performance.
 
----
-
-## **Implementation in Java Spring Boot**
-This section demonstrates how to implement **Read-Your-Write Consistency** in a **Spring Boot** application using:
-- **PostgreSQL** as the database.
-- **Redis** for storing the last written LSN per user.
-- **JPA + JDBC** for database interactions.
-
-### **1. Dependencies (Maven)**
-```xml
-<dependencies>
-    <dependency>
-        <groupId>org.springframework.boot</groupId>
-        <artifactId>spring-boot-starter-web</artifactId>
-    </dependency>
-    <dependency>
-        <groupId>org.springframework.boot</groupId>
-        <artifactId>spring-boot-starter-data-jpa</artifactId>
-    </dependency>
-    <dependency>
-        <groupId>org.postgresql</groupId>
-        <artifactId>postgresql</artifactId>
-        <scope>runtime</scope>
-    </dependency>
-    <dependency>
-        <groupId>org.springframework.boot</groupId>
-        <artifactId>spring-boot-starter-data-redis</artifactId>
-    </dependency>
-</dependencies>
-```
-
----
-
-### **2. Database Schema (PostgreSQL)**
-```sql
-CREATE TABLE users (
-    id SERIAL PRIMARY KEY,
-    name VARCHAR(100)
-);
-
-CREATE TABLE user_actions (
-    id SERIAL PRIMARY KEY,
-    user_id INT REFERENCES users(id),
-    action TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-```
-
----
-
-### **3. Service Implementation**
-#### **Database Service**
-```java
-@Service
-public class UserService {
-    private final JdbcTemplate jdbcTemplate;
-    private final RedisService redisService;
-
-    public UserService(JdbcTemplate jdbcTemplate, RedisService redisService) {
-        this.jdbcTemplate = jdbcTemplate;
-        this.redisService = redisService;
-    }
-
-    @Transactional
-    public void performUserAction(Long userId, String action) {
-        jdbcTemplate.update("INSERT INTO user_actions (user_id, action) VALUES (?, ?)", userId, action);
-        String latestLsn = getCurrentLsn();
-        redisService.storeUserLsn(userId, latestLsn);
-    }
-
-    public Optional<User> readUser(Long userId) {
-        String userLsn = redisService.getUserLsn(userId);
-        String replicaLsn = getReplicaLsn();
-        boolean isCaughtUp = isReplicaCaughtUp(userLsn, replicaLsn);
-        return isCaughtUp ? userRepository.findById(userId) : userRepository.findById(userId);
-    }
-
-    private String getCurrentLsn() {
-        return jdbcTemplate.queryForObject("SELECT pg_current_wal_lsn()", String.class);
-    }
-
-    private String getReplicaLsn() {
-        return jdbcTemplate.queryForObject("SELECT pg_last_wal_replay_lsn()", String.class);
-    }
-
-    private boolean isReplicaCaughtUp(String userLsn, String replicaLsn) {
-        String query = "SELECT pg_wal_lsn_diff(?, ?)";
-        Long diff = jdbcTemplate.queryForObject(query, new Object[]{replicaLsn, userLsn}, Long.class);
-        return diff >= 0;
-    }
-}
-```
-
----
-
-### **4. Redis Service**
-```java
-@Service
-public class RedisService {
-    private final StringRedisTemplate redisTemplate;
-
-    public RedisService(StringRedisTemplate redisTemplate) {
-        this.redisTemplate = redisTemplate;
-    }
-
-    public void storeUserLsn(Long userId, String lsn) {
-        redisTemplate.opsForValue().set("user:lsn:" + userId, lsn);
-    }
-
-    public String getUserLsn(Long userId) {
-        return redisTemplate.opsForValue().get("user:lsn:" + userId);
-    }
-}
-```
-
----
-
-### **5. Repository Interface**
-```java
-public interface UserRepository extends JpaRepository<User, Long> {}
-```
-
----
-
-### **6. REST Controller**
-```java
-@RestController
-@RequestMapping("/users")
-public class UserController {
-    private final UserService userService;
-
-    public UserController(UserService userService) {
-        this.userService = userService;
-    }
-
-    @PostMapping("/{id}/actions")
-    public String performUserAction(@PathVariable Long id, @RequestBody String action) {
-        userService.performUserAction(id, action);
-        return "Action recorded";
-    }
-
-    @GetMapping("/{id}")
-    public Optional<User> readUser(@PathVariable Long id) {
-        return userService.readUser(id);
-    }
-}
-```
-
----
 
 ### **Summary of Implementation**
 - **Writes** update PostgreSQL and store the latest **LSN** in Redis.
@@ -185,7 +137,3 @@ public class UserController {
 
 This approach **reduces master database load**, ensuring **Read-Your-Write consistency** while maintaining performance.
 
----
-
-## **Conclusion**
-This approach is a practical way to implement **Read-Your-Write consistency** in a **Spring Boot** application while effectively utilizing **database replicas** and reducing master load. 🚀

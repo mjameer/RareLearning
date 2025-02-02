@@ -37,9 +37,9 @@ Bitbucket, which uses **PostgreSQL** as its database, employs a **replication la
 This approach **reduces master database load**, ensuring **Read-Your-Write consistency** while maintaining performance.
 
 ---
+### PostgreSQL Log Sequence Number (LSN) Queries
 
-
-##### a. Get the Current LSN
+#### a. Get the Current LSN
 To retrieve the **current LSN** of the master node, use:
 
 ```sql
@@ -58,7 +58,7 @@ This query provides the **current WAL position** of the master database.
 
 ---
 
-##### b. Check a Replica’s Last Applied LSN
+#### b. Check a Replica’s Last Applied LSN
 To check the **latest LSN applied** on a read replica, run:
 
 ```sql
@@ -77,7 +77,7 @@ This LSN represents the **last committed transaction** on the replica.
 
 ---
 
-##### c. Find Replication Lag
+#### c. Find Replication Lag
 To calculate the **difference** between the master and the replica (replication lag), use:
 
 ```sql
@@ -96,7 +96,7 @@ A higher difference means the **replica is lagging** behind the master.
 
 ---
 
-##### d. Monitor LSN Across All Replicas
+#### d. Monitor LSN Across All Replicas
 To get LSN details for all connected replicas, use:
 
 ```sql
@@ -117,7 +117,7 @@ This query helps monitor replication status and lag across all read replicas.
 
 ---
 
-##### e. Ensuring Read-Your-Write Consistency
+#### e. Ensuring Read-Your-Write Consistency
 To ensure **read-your-write consistency**, route read queries only to replicas **where the `replay_lsn` is greater than or equal to the user’s last written LSN**.
 
 ```sql
@@ -128,7 +128,7 @@ If the result is `TRUE`, the replica has caught up; otherwise, fallback to the m
 
 ---
 
-## Summary
+### Summary
 | Query | Purpose |
 |--------|---------|
 | `SELECT pg_current_wal_lsn();` | Get the current LSN on master |

@@ -24,6 +24,20 @@ Bitbucket, which uses **PostgreSQL** as its database, employs a **replication la
   - Queries all **replicas** for their current **LSN** progress.
   - Directs the read to a **replica that has caught up** with the latest user write, ensuring consistency.
 
+#### **5. Performance Impact**
+- The system reduces **read queries hitting the master** by **50%**, significantly improving scalability.
+- The overhead for checking LSNs (~10ms) is **tolerable**, ensuring fast and scalable performance.
+
+
+### **Summary of Implementation**
+- **Writes** update PostgreSQL and store the latest **LSN** in Redis.
+- **Reads** check **replication lag** by comparing the **replica LSN** with the user's latest **LSN**.
+- If the **replica is caught up**, read from it. Otherwise, read from the **master**.
+
+This approach **reduces master database load**, ensuring **Read-Your-Write consistency** while maintaining performance.
+
+---
+
 
 ##### a. Get the Current LSN
 To retrieve the **current LSN** of the master node, use:
@@ -124,16 +138,4 @@ If the result is `TRUE`, the replica has caught up; otherwise, fallback to the m
 
 Using these queries, you can **optimize replication strategies**, detect **lagging replicas**, and ensure **consistent reads across distributed databases**.
 
-
-#### **5. Performance Impact**
-- The system reduces **read queries hitting the master** by **50%**, significantly improving scalability.
-- The overhead for checking LSNs (~10ms) is **tolerable**, ensuring fast and scalable performance.
-
-
-### **Summary of Implementation**
-- **Writes** update PostgreSQL and store the latest **LSN** in Redis.
-- **Reads** check **replication lag** by comparing the **replica LSN** with the user's latest **LSN**.
-- If the **replica is caught up**, read from it. Otherwise, read from the **master**.
-
-This approach **reduces master database load**, ensuring **Read-Your-Write consistency** while maintaining performance.
 

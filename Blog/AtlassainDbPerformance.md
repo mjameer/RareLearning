@@ -34,6 +34,9 @@ Bitbucket, which uses **PostgreSQL** as its database, employs a **replication la
 - **Reads** check **replication lag** by comparing the **replica LSN** with the user's latest **LSN**.
 - If the **replica is caught up**, read from it. Otherwise, read from the **master**.
 
+### Reference 
+[scaling-bitbuckets-database](https://www.atlassian.com/blog/atlassian-engineering/scaling-bitbuckets-database)
+
 This approach **reduces master database load**, ensuring **Read-Your-Write consistency** while maintaining performance.
 
 ---

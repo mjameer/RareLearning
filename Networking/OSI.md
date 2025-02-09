@@ -4,32 +4,33 @@ The OSI (Open Systems Interconnection) model standardizes communication in compu
 
 ## The OSI Model Layers
 
-### 1. Application Layer (Layer 7)
+### 1. Application Layer (Layer 7) (HTTP Request)
 - Deals with user-facing applications like browsers.
 - When a user requests a webpage (e.g., `http://10003:80`), an HTTP **GET** request is prepared with headers, cookies, and other metadata.
 
-### 2. Presentation Layer (Layer 6)
+### 2. Presentation Layer (Layer 6) (Encryption & Formating)
 - Handles encryption if necessary.
 - In HTTP, this layer is bypassed, but in HTTPS, it encrypts data.
 
-### 3. Session Layer (Layer 5)
+### 3. Session Layer (Layer 5) 
 - Manages sessions, ensuring that multiple communications between the same client and server are tracked properly.
 
 > [!NOTE]
 > L7, L6 & L5 takes place in browser in itself. 
 
-### 4. Transport Layer (Layer 4)
+### 4. Transport Layer (Layer 4) (Segmentation) 
 - Splits data into segments and attaches **port numbers** (source and destination).
 - Ensures that packets arrive in order.
+- Defines the transport protocol (TCP for reliability, UDP for speed).
 
-### 5. Network Layer (Layer 3)
+### 5. Network Layer (Layer 3) (Router -> Packets)
 - Adds **IP addresses** (source and destination) and forms **packets**.
 - Responsible for routing data.
 
-### 6. Data Link Layer (Layer 2)
+### 6. Data Link Layer (Layer 2) (Ethernet -> Frames)
 - Breaks packets into **frames**, assigns **MAC addresses** of sender and reciever, and detects basic errors. Its done by ARP Protocol (Address resolution protocol)
 
-### 7. Physical Layer (Layer 1)
+### 7. Physical Layer (Layer 1) (Optical Cables)
 - Converts data into electrical signals, radio waves (Wi-Fi), or light signals (fiber optics) for transmission.
 
 <img width="920" alt="image" src="https://github.com/user-attachments/assets/dd09afea-e625-441b-b0a9-214b5bac1163" />

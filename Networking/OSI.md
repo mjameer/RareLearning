@@ -41,6 +41,9 @@ The OSI (Open Systems Interconnection) model standardizes communication in compu
 - If unencrypted (e.g., HTTP), data can be intercepted on public networks.
 - Encryption (e.g., HTTPS, VPNs) ensures secure data transmission.
 
+> [!NOTE]
+> L7, L6 & L5 takes place in browser in itself. 
+
 ### Reference
 
 - [The OSI Model](https://www.youtube.com/watch?v=7IS7gigunyI)

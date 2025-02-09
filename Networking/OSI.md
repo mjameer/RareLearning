@@ -15,6 +15,9 @@ The OSI (Open Systems Interconnection) model standardizes communication in compu
 ### 3. Session Layer (Layer 5)
 - Manages sessions, ensuring that multiple communications between the same client and server are tracked properly.
 
+> [!NOTE]
+> L7, L6 & L5 takes place in browser in itself. 
+
 ### 4. Transport Layer (Layer 4)
 - Splits data into segments and attaches **port numbers** (source and destination).
 - Ensures that packets arrive in order.
@@ -41,8 +44,7 @@ The OSI (Open Systems Interconnection) model standardizes communication in compu
 - If unencrypted (e.g., HTTP), data can be intercepted on public networks.
 - Encryption (e.g., HTTPS, VPNs) ensures secure data transmission.
 
-> [!NOTE]
-> L7, L6 & L5 takes place in browser in itself. 
+
 
 ### Reference
 

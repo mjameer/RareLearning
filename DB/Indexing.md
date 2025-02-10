@@ -1,6 +1,5 @@
-# Database Indexing Overview  
+## Database Indexing Overview  
 
-## Introduction  
 This document provides a high-level overview of database indexing, including:  
 - **What is an Index?**  
 - **The Problem it Solves**  
@@ -14,8 +13,6 @@ Without an index, finding a record requires **scanning pages sequentially**, whi
 - **Example:** If a table has **100 million users**, and each page contains **100 rows**, then a worst-case search requires scanning **1 million pages**.
   
 <img width="916" alt="image" src="https://github.com/user-attachments/assets/ad60e39c-bd22-4885-aba7-f4492265d54b" />
-
-
 
 
 

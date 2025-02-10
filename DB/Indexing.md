@@ -24,6 +24,7 @@ Without an index, finding a record requires **scanning pages sequentially**, whi
   
 - **Optimized case** (with database pre-fetching and optimizations): The fetch time can be reduced to around **3–5 seconds**.
 
+## Solution
 
 - **Solution:** An index tells the database **exactly where** to look, reducing the number of pages accessed.
 

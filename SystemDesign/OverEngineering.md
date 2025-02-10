@@ -1,6 +1,6 @@
 # Key Points on Over-Engineering in System Design
 
-![image](https://github.com/user-attachments/assets/f84a2155-34ba-4569-88a7-84f2590c7922)
+<img width="476" alt="image" src="https://github.com/user-attachments/assets/6dbfb49a-e303-4ab0-912b-e72824a2555b" />
 
 
 ## Start Simple

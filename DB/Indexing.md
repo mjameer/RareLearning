@@ -15,6 +15,14 @@ Without an index, finding a record requires **scanning pages sequentially**, whi
 <img width="916" alt="image" src="https://github.com/user-attachments/assets/ad60e39c-bd22-4885-aba7-f4492265d54b" />
 
 
+### **Fetch Timing Without Index**
+
+- **Each page fetch from SSD to RAM** takes approximately **100 microseconds (µs)**.
+- In a table with **100 million rows**, where each page holds **100 rows**, this results in **1 million pages**.
+- **Worst-case scenario**: The database might need to scan all **1 million pages**.  
+  - **Total time** = `1,000,000 pages * 100 µs` = **100 seconds**.
+  
+- **Optimized case** (with database pre-fetching and optimizations): The fetch time can be reduced to around **3–5 seconds**.
 
 
 - **Solution:** An index tells the database **exactly where** to look, reducing the number of pages accessed.

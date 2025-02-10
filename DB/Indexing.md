@@ -98,6 +98,7 @@ Without an index, finding a record requires **scanning pages sequentially**, whi
 ## Final Takeaways 🎯  
 - **Identify inefficient queries** before applying indexes.  
 - **Choose the right column(s) for indexing** based on query patterns.  
-- **Use specialized indexes (Geospatial, Full-Text, Hash) only when necessary.**  
+- **Use specialized indexes (Geospatial, Full-Text, Hash) only when necessary.**
+- Indexing Mistakes: Using expressions in queries (e.g., LIKE) can cause the planner to miss using the index and lead to slower queries.
 
 Indexes **optimize data retrieval** but should be used **strategically** to avoid unnecessary overhead. 🚀  

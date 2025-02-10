@@ -1,3 +1,14 @@
+
+# Prerequisites Before OSI Model:
+
+### DNS Resolution:
+- Converts domain names (e.g., www.google.com) into IP addresses.
+- First checks the local cache, then queries the ISP’s DNS if needed.
+
+### TCP Handshake (Three-Way Handshake):
+- Ensures a reliable connection before sending data.
+- Steps: SYN → SYN-ACK → ACK
+
 # OSI Model Overview
 
 The OSI (Open Systems Interconnection) model standardizes communication in computer systems and is used by devices like phones, routers, and computers. The video explains the OSI model from a software engineering perspective rather than a low-level networking view.
@@ -44,7 +55,6 @@ The OSI (Open Systems Interconnection) model standardizes communication in compu
 ## Security Considerations
 - If unencrypted (e.g., HTTP), data can be intercepted on public networks.
 - Encryption (e.g., HTTPS, VPNs) ensures secure data transmission.
-
 
 
 ### Reference

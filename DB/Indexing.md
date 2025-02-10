@@ -55,7 +55,7 @@ Without an index, finding a record requires **scanning pages sequentially**, whi
 
 <img width="649" alt="image" src="https://github.com/user-attachments/assets/d5299974-6b52-4b32-b4dd-32872089fb0f" />
 
-### **1. Geospatial Data (Latitude/Longitude Searches) 🌍**  
+### **3. Geospatial Data (Latitude/Longitude Searches) 🌍**  
 - **B-Trees struggle with 2D data** (e.g., **finding nearby locations**).  
 - Instead, use **Geospatial Indexes**:  
   - **Geohashing** (Used in Redis, converts coordinates into short strings for fast lookups)  
@@ -64,7 +64,7 @@ Without an index, finding a record requires **scanning pages sequentially**, whi
 
 <img width="903" alt="image" src="https://github.com/user-attachments/assets/7b086f63-1656-43f9-b0a8-13ebc5575865" />
 
-### **2. Full-Text Search (Finding Words in Text) 🔍**  
+### **4. Full-Text Search (Finding Words in Text) 🔍**  
 - **Problem:** B-Trees only help with **prefix searches** (e.g., `WHERE name LIKE 'pizza%'`).  
 - **Solution:** Use **Inverted Indexes** (maps words to document locations).  
 - **Used In:** Elasticsearch, PostgreSQL Full-Text Search, Lucene.

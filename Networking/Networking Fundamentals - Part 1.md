@@ -14,6 +14,9 @@
 - **Public vs. Private Subnet:**
   - **Public** → Internet-accessible.
   - **Private** → No direct internet access.
+ 
+<img width="892" alt="image" src="https://github.com/user-attachments/assets/1d9bf5c4-11d3-4882-bcf3-8bb2e2c33884" />
+
 
 ### 3. Ports
 - Ports distinguish different applications on a machine (e.g., `192.168.1.1:8080`).

@@ -76,10 +76,12 @@ If you want to remove a name, use the `clearName` method.
 <img width="548" alt="image" src="https://github.com/user-attachments/assets/6ecd4aa9-0ba6-4247-bfcd-2512ef91c0a2" />
 
 
+#### example  
 
 <img width="347" alt="image" src="https://github.com/user-attachments/assets/550d8b89-2bef-432c-a0d3-6a4d111e97ba" />
 
 
+#### Implementation 
 
 <img width="624" alt="image" src="https://github.com/user-attachments/assets/94d3552e-f8ce-4b50-9593-66f5ee4d17a1" />
 

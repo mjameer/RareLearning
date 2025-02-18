@@ -102,3 +102,17 @@ If you want to remove a name, use the `clearName` method.
 If you are applying a message format change, use the `reserved` keyword.
 
 <img width="258" alt="image" src="https://github.com/user-attachments/assets/e9aee8f0-73a4-42ae-b672-f081d8aa6194" />
+
+## Best Pratice
+
+<img width="517" alt="image" src="https://github.com/user-attachments/assets/dc239fcb-b459-4295-a1c3-5095ebb3bed1" />
+
+
+## gRPC Introduction
+
+<img width="739" alt="image" src="https://github.com/user-attachments/assets/f6e3b10f-3738-41ac-abc3-d675e2776374" />
+
+## Communication parrterns 
+
+<img width="718" alt="image" src="https://github.com/user-attachments/assets/889d69d7-9eab-403c-a43f-27da4d0089dd" />
+

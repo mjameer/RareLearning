@@ -90,15 +90,19 @@ Default values for ENUM
 
 <img width="548" alt="image" src="https://github.com/user-attachments/assets/6ecd4aa9-0ba6-4247-bfcd-2512ef91c0a2" />
 
+
+
 <img width="347" alt="image" src="https://github.com/user-attachments/assets/550d8b89-2bef-432c-a0d3-6a4d111e97ba" />
+
 
 
 <img width="624" alt="image" src="https://github.com/user-attachments/assets/94d3552e-f8ce-4b50-9593-66f5ee4d17a1" />
 
+
 ### import
 
 
-<img width="268" alt="image" src="https://github.com/user-attachments/assets/c51402a3-f8f3-4c55-81d0-96aadf9f5790" />
+<img width="361" alt="image" src="https://github.com/user-attachments/assets/46bc8fc7-42c9-4be5-a911-eba6a8445bce" />
 
 
 ### package vs java package 

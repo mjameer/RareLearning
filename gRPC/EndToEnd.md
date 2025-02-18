@@ -1,28 +1,27 @@
-<img width="796" alt="image" src="https://github.com/user-attachments/assets/f7d58a5b-d7d3-4e7d-a507-7203eb16ada0" />
-
 
 ### Protobuf
 
 Protocol Buffers (Protobuf): Efficient binary serialization format, reducing size and improving performance over JSON.
 
 
+### Proto file 
 
 A proto file is platform- and language-neutral. However, the JVM is not platform-neutral and requires installation based on the OS. Similarly, after creating a proto file, a tool is needed to compile it into Java source code. This is where the Protobuf compiler (protoc) comes in. Since protoc is OS-dependent, a plugin helps by automatically downloading the appropriate version for the operating system (e.g., Mac or Windows) and generating the necessary source code.
 
 
-#### To build new object 
+### To build new object 
 
 ![image](https://github.com/user-attachments/assets/2838c71f-5a00-40bd-a4ed-c928f02e58f5)
 
 
-#### To update existing object
+### To update existing object
 
  ![image](https://github.com/user-attachments/assets/aaa80bf6-4980-4a2b-b1e8-ff5483540f61)
 
 
  Not that objects created are immutable, so setters wont work. 
 
-#### Proto does not like null 
+### Proto does not like null 
 
 ![image](https://github.com/user-attachments/assets/a05d7b5f-d284-4e0e-85e3-eeb4876e89a0)
 ![image](https://github.com/user-attachments/assets/5795c260-8df2-4e07-8337-9bcd144efd2c)
@@ -42,21 +41,18 @@ so if you want to remove name, then use clearName method
 <img width="643" alt="image" src="https://github.com/user-attachments/assets/957d83bb-14b0-4ff4-9cac-c7a88e4f1f34" />
 
 
-
 ### Collection 
 
 <img width="742" alt="image" src="https://github.com/user-attachments/assets/04b6b7fd-9dac-4944-a6df-c30b2f8875d5" />
 
-
 #### list or set 
-![image](https://github.com/user-attachments/assets/55a5158f-d9e4-463d-93bd-181d1c102158)
 
+![image](https://github.com/user-attachments/assets/55a5158f-d9e4-463d-93bd-181d1c102158)
 
 ![image](https://github.com/user-attachments/assets/9a521786-ce9e-4d61-b01b-ab583bb71524)
 
 
 note : for set, its your responsiblity, proto can enforce. 
-
 
 #### map
 
@@ -68,8 +64,6 @@ note : for set, its your responsiblity, proto can enforce.
 
 
 ![image](https://github.com/user-attachments/assets/5f32954d-5df8-4b49-bbdc-820b3610c75c)
-
-
 
 
 #### complex DS

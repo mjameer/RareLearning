@@ -19,6 +19,7 @@ Note that objects created are immutable, so setters won't work.
 ## Proto and Null Values
 
 ![image](https://github.com/user-attachments/assets/a05d7b5f-d284-4e0e-85e3-eeb4876e89a0)
+
 ![image](https://github.com/user-attachments/assets/5795c260-8df2-4e07-8337-9bcd144efd2c)
 
 If you want to remove a name, use the `clearName` method.
@@ -40,6 +41,7 @@ If you want to remove a name, use the `clearName` method.
 ### List or Set
 
 ![image](https://github.com/user-attachments/assets/55a5158f-d9e4-463d-93bd-181d1c102158)
+
 ![image](https://github.com/user-attachments/assets/9a521786-ce9e-4d61-b01b-ab583bb71524)
 
 **Note:** For sets, it is your responsibility to enforce uniqueness; Proto does not enforce it.
@@ -47,7 +49,9 @@ If you want to remove a name, use the `clearName` method.
 ### Map
 
 ![image](https://github.com/user-attachments/assets/f2f820dd-0b0f-43a8-ba19-95c1ef43805b)
+
 ![image](https://github.com/user-attachments/assets/1a4d242b-725e-4bb8-8b7b-d2967266780e)
+
 ![image](https://github.com/user-attachments/assets/5f32954d-5df8-4b49-bbdc-820b3610c75c)
 
 ### Complex Data Structures
@@ -57,6 +61,7 @@ If you want to remove a name, use the `clearName` method.
 ## Enums
 
 <img width="480" alt="image" src="https://github.com/user-attachments/assets/659ddc74-4da6-431e-98d0-d3afc2ced345" />
+
 
 ![image](https://github.com/user-attachments/assets/e99dea10-ddd4-4f5d-9496-79c07db0f7a0)
 
@@ -69,7 +74,9 @@ If you want to remove a name, use the `clearName` method.
 ## OneOf
 
 <img width="548" alt="image" src="https://github.com/user-attachments/assets/6ecd4aa9-0ba6-4247-bfcd-2512ef91c0a2" />
+
 <img width="347" alt="image" src="https://github.com/user-attachments/assets/550d8b89-2bef-432c-a0d3-6a4d111e97ba" />
+
 <img width="624" alt="image" src="https://github.com/user-attachments/assets/94d3552e-f8ce-4b50-9593-66f5ee4d17a1" />
 
 ## Importing

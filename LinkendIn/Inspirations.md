@@ -6,7 +6,7 @@
 # LinkedIn Referrals and Inspiration Links  
 
 
-## Inspiration Links  
+## Backend and General Inspiration Links  
 - [Victoria Shade](https://www.linkedin.com/in/victoria-shade/)  
 - [Dorothy Ordogh](https://www.linkedin.com/in/dorothyordogh/)  
 - [Himani Patel](https://www.linkedin.com/in/himanipatel2986/)  
@@ -26,7 +26,7 @@
 - [Priyadarshini Balachandran - Wallmart](https://www.linkedin.com/in/priyadarshini-balachandran-54079961/)
 
 
-# Staff DevOps Engineer Links
+## Staff DevOps Engineer Links
 
 - [Balachandran Muthuvel](https://www.linkedin.com/in/balachandran-muthuvel-31820313/)  
 - [TL King](https://www.linkedin.com/in/tlking/)  

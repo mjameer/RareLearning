@@ -23,7 +23,19 @@
 - [Beomjun Shin - Match Group](https://www.linkedin.com/in/beomjunshin/)  
 - [Nagarajan Kanna](https://www.linkedin.com/in/nagarajankanna/)  
 - [Kenneth Ho](https://www.linkedin.com/in/kenneth-ho-2001/)  
-- [Priyadarshini Balachandran - Wallmart](https://www.linkedin.com/in/priyadarshini-balachandran-54079961/)  
+- [Priyadarshini Balachandran - Wallmart](https://www.linkedin.com/in/priyadarshini-balachandran-54079961/)
+
+
+# Staff DevOps Engineer Links
+
+- [Balachandran Muthuvel](https://www.linkedin.com/in/balachandran-muthuvel-31820313/)  
+- [TL King](https://www.linkedin.com/in/tlking/)  
+- [Pranav Desai](https://www.linkedin.com/in/pranav-desai-00195318/)  
+- [Kanthi Mudiyala](https://www.linkedin.com/in/kanthi-mudiyala/)  
+- [Adil Fulara](https://www.linkedin.com/in/adilfulara/)  
+- [Ram Panguluri](https://www.linkedin.com/in/ram-panguluri/)  
+- [Mahendra Sahu](https://www.linkedin.com/in/mahendra-sahu-b3aa408/)  
+- [Lily Reale](https://www.linkedin.com/in/lily-reale/)  
 
 
 # Notes from LinkenIn
@@ -45,8 +57,6 @@
 - Also, I leverage Jenkins CI/CD tools, GitLab, Jira, and Docker registry/daemons for precise configuration management and automation. Conduct thorough testing procedures, including sanity, smoke, functional, and user acceptance testing by employing Test-Driven Development (TDD) approach.
 - Also, I have participated in restructuring phase of company's architecture process with keen focus on driving improvements and efficiency enhancements.
 
-
-  
 
 - Managed ~15 direct reports, responsible for development, mentorship and performance management of senior and junior engineers.
 

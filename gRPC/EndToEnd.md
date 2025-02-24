@@ -116,3 +116,26 @@ If you are applying a message format change, use the `reserved` keyword.
 
 <img width="718" alt="image" src="https://github.com/user-attachments/assets/889d69d7-9eab-403c-a43f-27da4d0089dd" />
 
+
+## gRPC Unary 
+
+<img width="551" alt="image" src="https://github.com/user-attachments/assets/e6350472-b58e-4b2d-8be6-91e6344a64b0" />
+
+
+<img width="384" alt="image" src="https://github.com/user-attachments/assets/3ba26ed0-500c-4f3d-aa60-58253456e0fe" />
+
+Note we cannot pass primitive types in the service, so everything must be inform of message. 
+
+
+also note that there is no return type in service methods, but only a StreamObserver
+
+
+<img width="824" alt="image" src="https://github.com/user-attachments/assets/264a4c3e-88c3-4fa0-990d-62242fc83e67" />
+
+
+
+Always disable tls in postman when trying grpc, as http2 needs tls be secure 
+
+<img width="595" alt="image" src="https://github.com/user-attachments/assets/2b1fb534-785a-4eae-a873-a22821f88302" />
+
+

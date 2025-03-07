@@ -35,7 +35,12 @@
 - [Adil Fulara](https://www.linkedin.com/in/adilfulara/)  
 - [Ram Panguluri](https://www.linkedin.com/in/ram-panguluri/)  
 - [Mahendra Sahu](https://www.linkedin.com/in/mahendra-sahu-b3aa408/)  
-- [Lily Reale](https://www.linkedin.com/in/lily-reale/)  
+- [Lily Reale](https://www.linkedin.com/in/lily-reale/)
+
+## Dell
+
+- https://www.linkedin.com/in/vrajeshperumal/
+- https://www.linkedin.com/in/sridhar-dachepelly-4129331b/
 
 
 # Notes from LinkenIn

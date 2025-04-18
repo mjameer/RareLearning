@@ -69,7 +69,7 @@ Listening for transport dt_socket at address: 8000
 
 Click **OK** and then click **Debug** to attach to the running container.
 
-https://blog.jetbrains.com/wp-content/uploads/2019/04/idea-docker-debug-config.png![image](https://github.com/user-attachments/assets/913d818c-3601-4fbe-8f90-60d630d674fb)
+![image](https://github.com/user-attachments/assets/f778ea47-f926-4d8f-90b7-6fdbb73ac9dd)
 
 
 ## ✅ Verify Debugging

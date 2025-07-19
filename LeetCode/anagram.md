@@ -8,3 +8,24 @@ class Solution:
 
         return list(anagram_map.values())
 ```
+
+
+```
+class Solution {
+    public List<List<String>> groupAnagrams(String[] strs) {
+        Map<String, List<String>> anagramsMap = new HashMap<>();
+
+        for (String word : strs) {
+
+            char [] charArray = word.toCharArray();
+            Arrays.sort(charArray);
+            String key = new String(charArray); 
+
+            anagramsMap.computeIfAbsent(key, k -> new ArrayList<String>()).add(word);
+        }
+
+        return new ArrayList<>(anagramsMap.values());
+        
+    }
+}
+```

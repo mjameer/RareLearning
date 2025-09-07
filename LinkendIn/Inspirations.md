@@ -25,6 +25,7 @@
 - [Kenneth Ho](https://www.linkedin.com/in/kenneth-ho-2001/)  
 - [Priyadarshini Balachandran - Wallmart](https://www.linkedin.com/in/priyadarshini-balachandran-54079961/)
 - [Home Depot](https://www.linkedin.com/in/vikram-rajashekhar-b7b52b22/)
+- [Fathima Sameer](https://www.linkedin.com/in/fathimasameer/)
 
 
 ## Staff DevOps Engineer Links

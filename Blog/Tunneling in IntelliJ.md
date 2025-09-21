@@ -1,4 +1,4 @@
-# 🔌 SSH Tunnel Helper Script (`tunnel.sh`)
+# local port forwarding
 
 `tunnel.sh` is a helper script that establishes an **SSH tunnel** from WSL to a remote host.  
 It forwards multiple remote services (databases, web UIs, brokers, etc.) to `localhost` so that tools like **IntelliJ** (running on Windows) can connect as if the services were local.  

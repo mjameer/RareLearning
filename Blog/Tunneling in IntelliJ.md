@@ -86,14 +86,13 @@ chmod +x tunnel.sh
 | Local Port | Remote Port | Service / Purpose |
 |------------|-------------|-------------------|
 | 12350      | 12350       | Custom service (marker) |
-| 8432       | 5432        | PostgreSQL |
+| 5432       | 5432        | PostgreSQL |
 | 9200       | 9200        | Elasticsearch |
 | 61616      | 61616       | ActiveMQ |
 | 8443       | 8443        | HTTPS service |
 | 9090       | 9090        | Monitoring |
-| 8006–8020  | same        | App/dev ports |
-| 8050, 8161, 8500 | same | Service UIs / tools |
-| 9162       | 162         | SNMP (trap testing) |
+| 8006–8500  | same        | App/dev ports, Service UIs / tools |
+| 9162       | 9162         | SNMP (trap testing) |
 
 👉 All forwards bind to **localhost only**, so they’re safe and only accessible to your machine.  
 

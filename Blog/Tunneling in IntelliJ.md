@@ -3,9 +3,7 @@
 `tunnel.sh` is a helper script that establishes an **SSH tunnel** from WSL to a remote host.  
 It forwards multiple remote services (databases, web UIs, brokers, etc.) to `localhost` so that tools like **IntelliJ** (running on Windows) can connect as if the services were local.  
 
-
-<img width="1035" height="634" alt="image" src="https://github.com/user-attachments/assets/e5ee20af-2aab-4279-8897-fcfa2a2e38cd" />
-
+<img width="1280" height="800" alt="Gemini_Generated_Image_b8rdeub8rdeub8rd" src="https://github.com/user-attachments/assets/0a9baa15-2211-4306-8505-803045bc9b33" />
 
 ---
 

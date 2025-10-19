@@ -4,6 +4,8 @@
 
 https://www.youtube.com/watch?v=iHHqnyThrqE
 
+https://notebooklm.google.com/notebook/636df04d-2935-48c7-8216-cf698bcd7ac7 
+
 
 This document summarizes the core concepts of an **inverted index**, the fundamental data structure that powers nearly every modern search engine. It explains why the inverted index is superior to naive search methods and outlines how it's built, used, and optimized.
 

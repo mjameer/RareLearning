@@ -1,5 +1,6 @@
 # Understanding the Inverted Index: The Core of Search Engines 🗂️
 
+<img width="1357" height="665" alt="image" src="https://github.com/user-attachments/assets/d8c8061d-f12b-493a-ae52-6c4a8053de40" />
 
 https://www.youtube.com/watch?v=iHHqnyThrqE
 

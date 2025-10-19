@@ -1,5 +1,9 @@
 # Understanding the Inverted Index: The Core of Search Engines 🗂️
 
+
+https://www.youtube.com/watch?v=iHHqnyThrqE
+
+
 This document summarizes the core concepts of an **inverted index**, the fundamental data structure that powers nearly every modern search engine. It explains why the inverted index is superior to naive search methods and outlines how it's built, used, and optimized.
 
 ---

@@ -69,6 +69,9 @@ The USE method is resource-oriented and focuses on the infrastructure layer.
 
 ### The Four Golden Signals
 
+<img width="1293" height="692" alt="image" src="https://github.com/user-attachments/assets/4ed001f1-ddc9-4a1d-a9ee-e1695fcb84b6" />
+
+
 Introduced in Google's Site Reliability Engineering (SRE) handbook, this method is essentially the **RED method plus Saturation**. It suggests that if you can only measure four metrics for a user-facing system, you should focus on these:
 
 1.  **Latency** (Duration)
@@ -78,10 +81,14 @@ Introduced in Google's Site Reliability Engineering (SRE) handbook, this method 
 
 ### Core Web Vitals
 
-<img width="1293" height="692" alt="image" src="https://github.com/user-attachments/assets/4ed001f1-ddc9-4a1d-a9ee-e1695fcb84b6" />
 
 This Google-introduced methodology is exclusively for the UI layer (websites) and is crucial for Search Engine Optimization (SEO).
 
 * **Largest Contentful Paint (LCP):** Measures *perceived page load speed*. It marks the point when the page's main content has likely loaded.
 * **First Input Delay (FID):** Measures *perceived responsiveness*. It quantifies the experience users feel when trying to interact with an unresponsive page.
 * **Cumulative Layout Shift (CLS):** Measures *perceived visual stability*. It helps quantify how often users experience unexpected layout shifts.
+
+
+## NotebOOK llm
+
+https://notebooklm.google.com/notebook/74f96f2d-8e12-4579-88c8-0ad0a2cfead9 

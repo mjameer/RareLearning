@@ -78,6 +78,8 @@ Introduced in Google's Site Reliability Engineering (SRE) handbook, this method 
 
 ### Core Web Vitals
 
+<img width="1293" height="692" alt="image" src="https://github.com/user-attachments/assets/4ed001f1-ddc9-4a1d-a9ee-e1695fcb84b6" />
+
 This Google-introduced methodology is exclusively for the UI layer (websites) and is crucial for Search Engine Optimization (SEO).
 
 * **Largest Contentful Paint (LCP):** Measures *perceived page load speed*. It marks the point when the page's main content has likely loaded.

@@ -130,22 +130,7 @@ The Schema Registry solves this by maintaining a **versioned history** of schema
 
 ---
 
-## References
-
-1.  **PostgreSQL Change Data Capture with Debezium, Kafka, and Microservices**
-    * [https://www.youtube.com/watch?v=fwlAFJxRcok](https://www.youtube.com/watch?v=fwlAFJxRcok)
-2.  **Change Data Capture (CDC) - The Best Practice for Microservices?**
-    * [https://www.youtube.com/watch?v=Uoas9E8Luo8](https://www.youtube.com/watch?v=Uoas9E8Luo8)
-3.  **Change Data Capture with Kafka Connect and Debezium**
-    * [https://www.youtube.com/watch?v=6VbRlQ0rL3I](https://www.youtube.com/watch?v=6VbRlQ0rL3I)
-4.  **CDC with Debezium and PostgreSQL | Setup Debezium for PostgreSQL (Part 3)**
-    * [https://www.youtube.com/watch?v=YZRHqRznO-o&list=PLPnOUbNhPEkzd9-VVX7IjnBqsg9O6axOI&index=3](https://www.youtube.com/watch?v=YZRHqRznO-o&list=PLPnOUbNhPEkzd9-VVX7IjnBqsg9O6axOI&index=3)
-5.  **Consume Debezium Events with a Simple Kafka Consumer (Part 19)**
-    * [https://www.youtube.com/watch?v=0d_I2aQm4LE&list=PLPnOUbNhPEkzd9-VVX7IjnBqsg9O6axOI&index=19](https://www.youtube.com/watch?v=0d_I2aQm4LE&list=PLPnOUbNhPEkzd9-VVX7IjnBqsg9O6axOI&index=19)
-6.  **GitHub Repository: irtiza07/postgres\_debezium\_cdc**
-    * [https://github.com/irtiza07/postgres_debezium_cdc](https://github.com/irtiza07/postgres_debezium_cdc)
-7.  **Real-Time Data: Postgres, Debezium, Kafka, Schema Registry, Delta Streamer**
-    * [https://www.youtube.com/watch?v=GIs-Y1VYIY8](https://www.youtube.com/watch?v=GIs-Y1VYIY8)
-
+## Git
+https://github.com/irtiza07/postgres_debezium_cdc/tree/master
 
 

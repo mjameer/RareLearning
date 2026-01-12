@@ -41,11 +41,11 @@
 
 ## Meta
 
--[Janarthanan-rajendran](https://www.linkedin.com/in/janarthanan-rajendran-3b119637/)
+- [Janarthanan-rajendran](https://www.linkedin.com/in/janarthanan-rajendran-3b119637/)
 
 ## Resume
 
--[janani-sriram](https://www.linkedin.com/in/janani-sriram/)
+- [janani-sriram](https://www.linkedin.com/in/janani-sriram/)
 
 ## Dell
 

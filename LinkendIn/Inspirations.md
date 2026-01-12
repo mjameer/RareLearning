@@ -39,6 +39,14 @@
 - [Mahendra Sahu](https://www.linkedin.com/in/mahendra-sahu-b3aa408/)  
 - [Lily Reale](https://www.linkedin.com/in/lily-reale/)
 
+## Meta
+
+-[Janarthanan-rajendran](https://www.linkedin.com/in/janarthanan-rajendran-3b119637/)
+
+## Resume
+
+-[janani-sriram](https://www.linkedin.com/in/janani-sriram/)
+
 ## Dell
 
 - https://www.linkedin.com/in/vrajeshperumal/

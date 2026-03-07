@@ -23,6 +23,7 @@
 14. [Putting It All Together — Full Setup](#14-putting-it-all-together--full-setup)
 15. [The Complete Day-by-Day Lifecycle](#15-the-complete-day-by-day-lifecycle)
 16. [When TimescaleDB Is the Wrong Tool](#16-when-timescaledb-is-the-wrong-tool)
+17. [Summary — Three Settings You Must Never Confuse](#17-summary--three-settings-you-must-never-confuse)
 
 ---
 
@@ -33,7 +34,8 @@ Imagine you join a stock trading company. On day 1 your manager says:
 > "We store every price tick for 500 stocks. That's 10 million rows per day.
 > After 6 months Grafana dashboards are timing out. Fix it."
 
-You look at the database. It is vanilla PostgreSQL. One giant `trades` table. 1.8 billion rows. Every dashboard query scans the whole thing.
+You look at the database. It is vanilla PostgreSQL. One giant `trades` table.
+1.8 billion rows. Every dashboard query scans the whole thing.
 
 This is exactly the problem TimescaleDB was built for.
 
@@ -42,11 +44,11 @@ Vanilla PostgreSQL after 1 year:
 
 SELECT avg(price) FROM trades WHERE time > now() - INTERVAL '7 days';
 
-PostgreSQL:
-  → Opens the ENTIRE trades table (1.8 billion rows)
-  → Reads every single row from disk
-  → Filters out 99.9% after reading them
-  → Returns result
+PostgreSQL must:
+  → Open the ENTIRE trades table (1.8 billion rows)
+  → Read every single row from disk
+  → Filter out 99.9% of rows after reading them
+  → Return result
 
 Like searching for last week's emails by reading
 every email you ever sent since college.
@@ -64,15 +66,16 @@ TimescaleDB = PostgreSQL + an extension installed on top
 
 Everything you know about Postgres still works:
 
-| Works as before | New capabilities added |
-|---|---|
-| Same SQL | Hypertables (auto partitioning by time) |
-| Same `psql` | Compression (columnar storage for old data) |
-| Same `pg_dump` | Continuous Aggregates (auto-refreshing summaries) |
-| Same Grafana datasource | Retention Policies (auto-delete old data) |
-| Same indexes, JOINs | Background job scheduler |
+| Works as before        | New capabilities added                        |
+|------------------------|-----------------------------------------------|
+| Same SQL               | Hypertables (auto partitioning by time)       |
+| Same `psql`            | Compression (columnar storage for old data)   |
+| Same `pg_dump`         | Continuous Aggregates (auto-refreshing summaries) |
+| Same Grafana datasource| Retention Policies (auto-delete old data)     |
+| Same indexes, JOINs    | Background job scheduler                      |
 
-Think of it like installing an app on your phone. The phone (PostgreSQL) works exactly the same. The app (TimescaleDB) adds new capabilities on top.
+Think of it like installing an app on your phone. The phone (PostgreSQL) works
+exactly the same. The app (TimescaleDB) adds new capabilities on top.
 
 ---
 
@@ -97,92 +100,74 @@ Time series data has three characteristics:
 
 Examples:
 
-| Domain | Data | Frequency |
-|---|---|---|
-| Stock trading | Price ticks | Every millisecond |
-| IoT | Sensor temperature | Every 5 seconds |
-| DevOps | CPU/memory metrics | Every minute |
-| Web analytics | User click events | Continuous |
-| Weather | Station readings | Every hour |
+| Domain        | Data              | Frequency          |
+|---------------|-------------------|--------------------|
+| Stock trading | Price ticks       | Every millisecond  |
+| IoT           | Sensor temperature| Every 5 seconds    |
+| DevOps        | CPU/memory metrics| Every minute       |
+| Web analytics | User click events | Continuous         |
+| Weather       | Station readings  | Every hour         |
 
 ---
 
 ## 4. What Is a Hypertable
 
-A hypertable looks like one normal table to you. Behind the scenes TimescaleDB splits it into many small tables called **chunks**, each covering a specific time window.
+A hypertable looks like one normal table to you. Behind the scenes TimescaleDB
+splits it into many small tables called **chunks**, each covering a specific
+time window.
 
-```mermaid
-graph TD
-    Q["SELECT * FROM trades"]
-    H["trades  hypertable"]
-    C1["chunk_1  Jan 1"]
-    C2["chunk_2  Jan 2"]
-    C3["chunk_3  Jan 3"]
-    CN["chunk_N  Today"]
+```
+What YOU see:
+┌────────────────────────────────────────┐
+│          trades  (hypertable)          │
+│       all your data, all time          │
+└────────────────────────────────────────┘
 
-    Q --> H
-    H --> C1
-    H --> C2
-    H --> C3
-    H --> CN
+What TimescaleDB actually stores on disk:
+┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐
+│ chunk_1  │  │ chunk_2  │  │ chunk_3  │  │ chunk_N  │
+│  Jan 1   │  │  Jan 2   │  │  Jan 3   │  │  Today   │
+│  (raw)   │  │  (raw)   │  │  (raw)   │  │  (raw)   │
+└──────────┘  └──────────┘  └──────────┘  └──────────┘
 
-    style Q fill:#1e3a8a,stroke:#60a5fa,color:#ffffff
-    style H fill:#78350f,stroke:#fbbf24,color:#ffffff
-    style C1 fill:#14532d,stroke:#4ade80,color:#ffffff
-    style C2 fill:#14532d,stroke:#4ade80,color:#ffffff
-    style C3 fill:#14532d,stroke:#4ade80,color:#ffffff
-    style CN fill:#7f1d1d,stroke:#f87171,color:#ffffff
+You always query trades — TimescaleDB routes to the right chunks invisibly.
 ```
 
-**Why does this matter — Chunk Exclusion:**
+### Chunk Exclusion — Why This Matters
 
 ```
 Query: WHERE time > now() - INTERVAL '7 days'
 
-Without hypertable (vanilla Postgres):
-  Scans all 365 chunks worth of data
+                ┌──────────────────────────────────┐
+                │    TimescaleDB Query Planner      │
+                └──────────────┬───────────────────┘
+                               │
+          ┌────────────────────┼────────────────────┐
+          │                    │                    │
+          ▼                    ▼                    ▼
+   ┌─────────────┐     ┌─────────────┐     ┌─────────────┐
+   │  chunk_1    │     │  chunk_2    │     │  chunk_358  │
+   │  Jan        │     │  Feb        │     │  ...        │
+   │  ✗ SKIP     │     │  ✗ SKIP     │     │  ✗ SKIP     │
+   └─────────────┘     └─────────────┘     └─────────────┘
 
-With hypertable (TimescaleDB):
-  Opens only the last 7 chunks
-  Skips 358 chunks entirely — never reads from disk
+          ┌────────────────────┬────────────────────┐
+          ▼                    ▼                    ▼
+   ┌─────────────┐     ┌─────────────┐     ┌─────────────┐
+   │  chunk_359  │     │  chunk_360  │     │  chunk_361  │
+   │  Mar 1      │     │  Mar 2      │     │  Mar 3      │
+   │  ✓ READ     │     │  ✓ READ     │     │  ✓ READ     │
+   └─────────────┘     └─────────────┘     └─────────────┘
 
-This is called CHUNK EXCLUSION.
-```
-
-```mermaid
-graph TD
-    Q["Query: time > last 7 days"]
-    P["TimescaleDB Query Planner"]
-    S1["chunk_1  Jan   SKIP"]
-    S2["chunk_2  Feb   SKIP"]
-    S3["older chunks   SKIP"]
-    R1["chunk_359  Mar 1   READ"]
-    R2["chunk_360  Mar 2   READ"]
-    R3["chunk_361  Mar 3   READ"]
-
-    Q --> P
-    P --> S1
-    P --> S2
-    P --> S3
-    P --> R1
-    P --> R2
-    P --> R3
-
-    style Q fill:#1e3a8a,stroke:#60a5fa,color:#ffffff
-    style P fill:#78350f,stroke:#fbbf24,color:#ffffff
-    style S1 fill:#7f1d1d,stroke:#f87171,color:#ffffff
-    style S2 fill:#7f1d1d,stroke:#f87171,color:#ffffff
-    style S3 fill:#7f1d1d,stroke:#f87171,color:#ffffff
-    style R1 fill:#14532d,stroke:#4ade80,color:#ffffff
-    style R2 fill:#14532d,stroke:#4ade80,color:#ffffff
-    style R3 fill:#14532d,stroke:#4ade80,color:#ffffff
+358 chunks never touched. Only last 7 opened. This is CHUNK EXCLUSION.
 ```
 
 ---
 
 ## 5. What Is a Chunk
 
-A chunk is a real, physical PostgreSQL table. You just never interact with it directly.
+A chunk is a real, physical PostgreSQL table. You just never interact with it
+directly.
 
 ```sql
 -- After create_hypertable, TimescaleDB creates under the hood:
@@ -228,48 +213,53 @@ Only controls: how wide is each time window per chunk.
 
 **No. TimescaleDB is always working — not just during queries.**
 
-```mermaid
-graph TD
-    subgraph INSERT path
-        A["INSERT INTO trades VALUES time symbol price"]
-        B["TimescaleDB reads the timestamp"]
-        C["Routes row to correct chunk"]
-        D["Row written to chunk — invisible to you"]
-        A --> B --> C --> D
-    end
+```
+ON EVERY INSERT:
 
-    subgraph Background Jobs always running on schedule
-        E["Compression Job — compresses old chunks"]
-        F["Aggregate Refresh — updates pre-computed summaries"]
-        G["Retention Job — drops chunks older than threshold"]
-    end
+  INSERT INTO trades VALUES ('2025-03-07 09:30', 'AAPL', 195.0, 1000)
+                                       │
+                        TimescaleDB reads the timestamp
+                                       │
+                        "March 7 belongs to chunk_47"
+                                       │
+                        Writes row to chunk_47
+                        You never see this happening
 
-    style A fill:#1e3a8a,stroke:#60a5fa,color:#ffffff
-    style D fill:#14532d,stroke:#4ade80,color:#ffffff
-    style E fill:#78350f,stroke:#fbbf24,color:#ffffff
-    style F fill:#78350f,stroke:#fbbf24,color:#ffffff
-    style G fill:#78350f,stroke:#fbbf24,color:#ffffff
+ON EVERY QUERY:
+
+  WITH time filter    → skips irrelevant chunks (fast)
+  WITHOUT time filter → scans all chunks (same as vanilla Postgres, slow)
+
+BACKGROUND — always running on a schedule:
+
+  ┌─────────────────────────────────────────────────┐
+  │  Compression Job    → compresses old chunks     │
+  │  Aggregate Refresh  → updates pre-computed views│
+  │  Retention Job      → drops expired chunks      │
+  └─────────────────────────────────────────────────┘
 ```
 
-| Activity | When | What TimescaleDB Does |
-|---|---|---|
-| Every INSERT | Always | Routes row to correct chunk by timestamp |
-| SELECT with time filter | Query time | Skips chunks outside time range (fast) |
-| SELECT without time filter | Query time | Scans all chunks (same as vanilla Postgres) |
-| Compression job | Background schedule | Compresses old chunks |
-| Aggregate refresh | Background schedule | Updates continuous aggregate summaries |
-| Retention job | Background schedule | Drops chunks older than threshold |
+| Activity              | When               | What TimescaleDB Does                        |
+|-----------------------|--------------------|----------------------------------------------|
+| Every INSERT          | Always             | Routes row to correct chunk by timestamp     |
+| SELECT with time filter | Query time       | Skips chunks outside time range (fast)       |
+| SELECT without filter | Query time         | Scans all chunks (same as vanilla Postgres)  |
+| Compression job       | Background schedule| Compresses old chunks                        |
+| Aggregate refresh     | Background schedule| Updates continuous aggregate summaries       |
+| Retention job         | Background schedule| Drops chunks older than threshold            |
 
 ---
 
 ## 7. What Is Compression
 
-Old chunks stop receiving new data. TimescaleDB can compress them to save space and speed up reads.
+Old chunks stop receiving new data. TimescaleDB can compress them to save space
+and speed up reads.
 
 ```
-Raw row format after 1 year:   15 GB
-After compression on old data:  1.5 GB
-Savings: 90%
+Raw row format after 1 year:    15 GB
+After compression on old data:   1.5 GB
+                                ──────
+Savings:                         90%
 ```
 
 Compression does two things:
@@ -280,7 +270,7 @@ Compression does two things:
 
 2. Changes access pattern: read all columns → read only needed columns
    Query for price only → only price bytes read from disk
-   Volume and symbol bytes never touched
+   Volume and symbol bytes never touched at all
 ```
 
 ---
@@ -289,33 +279,49 @@ Compression does two things:
 
 ### Row Format — How All Databases Default
 
-Data stored row by row on disk. To compute `avg(price)`, every field of every row must be read:
+Data is stored row by row on disk. To compute `avg(price)`, every field of
+every row must be read:
 
 ```
 DISK (row format):
 
 [09:30][AAPL][195.0][1000]  [09:31][AAPL][195.2][900]  [09:32][TSLA][250.0][800]
- ←──────── row 1 ─────────→  ←──────── row 2 ─────────→  ←──────── row 3 ─────────→
+ ←──────── row 1 ──────────→ ←──────── row 2 ──────────→ ←──────── row 3 ──────────→
 
-For avg(price): must read 12 values but only 3 are price. 75% of disk reads wasted.
+Query: SELECT avg(price)
+
+  [09:30] → need? NO  (time)
+  [AAPL]  → need? NO  (symbol)
+  [195.0] → need? YES ✓
+  [1000]  → need? NO  (volume)
+  [09:31] → need? NO
+  [AAPL]  → need? NO
+  [195.2] → need? YES ✓
+  [900]   → need? NO
+  ...
+
+Result: read 12 values, only 3 were useful. 75% of disk reads wasted.
 ```
 
 ### Columnar Format — After TimescaleDB Compression
 
-Same column values stored together. To compute `avg(price)`, only the price block is read:
+Same column values stored together on disk. Only the relevant column block
+is read:
 
 ```
 DISK (columnar format):
 
-[09:30][09:31][09:32]   [AAPL][AAPL][TSLA]   [195.0][195.2][250.0]   [1000][900][800]
- ←── all times ───────   ←── all symbols ──   ←──── all prices ─────   ←─ all volumes
+[09:30][09:31][09:32]  [AAPL][AAPL][TSLA]  [195.0][195.2][250.0]  [1000][900][800]
+ ←── all times ───────  ←── all symbols ──  ←──── all prices ─────  ←─ all volumes
 
-For avg(price):
-  SKIP time block entirely
-  SKIP symbol block entirely
-  READ price block only
-  SKIP volume block entirely
-  → Read 3 values, all 3 useful. 0% waste.
+Query: SELECT avg(price)
+
+  time block    → SKIP entirely, never opened
+  symbol block  → SKIP entirely, never opened
+  price block   → READ all values  ✓ ✓ ✓
+  volume block  → SKIP entirely, never opened
+
+Result: read 3 values, all 3 useful. 0% waste.
 ```
 
 ### Why 90% Smaller
@@ -323,11 +329,14 @@ For avg(price):
 Similar values stored next to each other compress extremely well:
 
 ```
-AAPL prices stored together: 195.0, 195.2, 195.1, 195.3, 195.0
+AAPL prices stored together:  195.0,  195.2,  195.1,  195.3,  195.0
 
-Compression sees:
+Compression algorithm sees:
   Base:   195.0
-  Deltas: +0.2, -0.1, +0.2, -0.3   ← tiny numbers, compresses hugely
+  Deltas: +0.2, -0.1, +0.2, -0.3   ← tiny numbers, compress hugely
+
+Stores: one base number + four tiny deltas
+Instead of: five full decimal numbers
 
 In row format, 195.0 neighbors on disk are [AAPL] and [1000]
 — completely different types, nothing to compress.
@@ -337,9 +346,13 @@ In row format, 195.0 neighbors on disk are [AAPL] and [1000]
 
 ## 9. How Queries Still Work After Compression
 
-When data is spread across column blocks, how does TimescaleDB know which price belongs to which row?
+When data is spread across column blocks, how does TimescaleDB know which
+price belongs to which row?
 
-**The answer: position index.** Every column block stores values in the same order, so position 1 in the time block always corresponds to position 1 in the price block.
+**The answer: position index.**
+
+Every column block stores values in the same order. Position 1 in the time
+block always corresponds to position 1 in the price block — always.
 
 ```
 Position:      [0]      [1]      [2]
@@ -352,22 +365,42 @@ volume block:[1000]   [900]    [800]
 Position 0 = complete row: 09:30, AAPL, 195.0, 1000
 Position 1 = complete row: 09:31, AAPL, 195.2, 900
 Position 2 = complete row: 09:32, TSLA, 250.0, 800
+
+Position index is the invisible thread tying all columns together.
 ```
 
-### Query walkthrough: `WHERE symbol='AAPL' AND time BETWEEN 09:30 AND 09:32, SELECT price`
+### Query walkthrough
 
-```mermaid
-flowchart TD
-    A["Query: symbol=AAPL AND time 09:30-09:32 — SELECT price"]
-    B["Step 1 — Read time block\n09:30 at pos0 FAIL   09:31 at pos1 PASS   09:32 at pos2 FAIL\nBitmask: pos0=0  pos1=1  pos2=0"]
-    C["Step 2 — Read symbol block at surviving positions only\nCheck pos1 only — AAPL — PASS\nBitmask unchanged: pos0=0  pos1=1  pos2=0"]
-    D["Step 3 — Read price block at surviving positions only\nFetch pos1 only — value is 195.2"]
-    E["Result: 195.2\nVolume block never opened\npos0 and pos2 never fetched from any block"]
+```sql
+SELECT price FROM trades
+WHERE symbol = 'AAPL' AND time BETWEEN '09:30' AND '09:32';
+```
 
-    A --> B --> C --> D --> E
+```
+Step 1 — Read time block, find matching positions:
 
-    style A fill:#1e3a8a,stroke:#60a5fa,color:#ffffff
-    style E fill:#14532d,stroke:#4ade80,color:#ffffff
+  time block: [09:30]  [09:31]  [09:32]
+               pos 0    pos 1    pos 2
+
+  09:30 → outside range → pos 0 = NO
+  09:31 → inside range  → pos 1 = YES ✓
+  09:32 → outside range → pos 2 = NO
+
+  Bitmask: [ 0, 1, 0 ]
+
+Step 2 — Check symbol block at surviving positions only:
+
+  Only check pos 1 (where bitmask = 1)
+  pos 1 → AAPL → matches ✓
+  Bitmask still: [ 0, 1, 0 ]
+
+Step 3 — Fetch price block at surviving positions only:
+
+  Only read pos 1
+  pos 1 → 195.2  ← answer
+
+  Volume block: never opened
+  pos 0 and pos 2: never fetched from any block
 ```
 
 ---
@@ -382,41 +415,51 @@ ALTER TABLE trades SET (
 );
 ```
 
-**Setting 1 — `timescaledb.compress`**
+### Setting 1 — `timescaledb.compress`
 
-Just a flag. "Compression is allowed on this table." Does not compress anything yet. Without this TimescaleDB refuses to compress at all.
+Just a flag. "Compression is allowed on this table." Does not compress
+anything yet. Without this TimescaleDB refuses to compress at all.
 
-**Setting 2 — `compress_segmentby = 'symbol'`**
+### Setting 2 — `compress_segmentby = 'symbol'`
 
-Before compressing, group rows by symbol first. Each symbol gets its own compressed block:
+Before compressing, group rows by symbol first. Each symbol gets its own
+compressed block:
 
 ```
 WITHOUT segmentby — one mixed block:
-  [AAPL 195.0] [TSLA 250.0] [AAPL 195.2] [NVDA 880.0]
-  AAPL query must scan all positions to find AAPL rows
+
+  pos: [0]      [1]      [2]      [3]      [4]
+  sym: [AAPL]   [TSLA]   [AAPL]   [NVDA]   [AAPL]
+  pri: [195.0]  [250.0]  [195.2]  [880.0]  [195.1]
+
+  AAPL query must scan all 5 positions to find AAPL rows.
+
 
 WITH segmentby = 'symbol' — separate block per symbol:
-  AAPL block: [195.0, 195.2, 195.1]
-  TSLA block: [250.0, 250.5, 251.0]
-  NVDA block: [880.0, 881.0]
+
+  AAPL block:                TSLA block:            NVDA block:
+  pos: [0]    [1]    [2]     pos: [0]    [1]        pos: [0]
+  pri: [195.0][195.2][195.1] pri: [250.0][250.5]    pri: [880.0]
 
   AAPL query opens AAPL block only.
   TSLA and NVDA blocks never touched, never decompressed.
 ```
 
-**Setting 3 — `compress_orderby = 'time DESC'`**
+### Setting 3 — `compress_orderby = 'time DESC'`
 
 Within each symbol group, sort rows newest first before compressing:
 
 ```
 AAPL block sorted time DESC:
+
   pos 0 → 09:36  (newest)
   pos 1 → 09:33
   pos 2 → 09:31  (oldest)
 
 Query: WHERE time > 09:33
+
   pos 0: 09:36 ✓ keep
-  pos 1: 09:33 ✗ stop — sorted DESC so everything below is older
+  pos 1: 09:33 ✗ stop — sorted DESC, everything below is older
 
 Finds result without scanning the full block.
 ```
@@ -430,24 +473,33 @@ Finds result without scanning the full block.
 ```
 Timeline of one day:
 
-00:00 ──────────────────────────────────── 24:00
+00:00 ─────────────────────────────────────────────── 24:00
   │
-  │   Inserts happening all day normally
-  │   No compression during this time
+  │   Normal inserts all day
+  │   No compression happening
   │   Active chunk fully available for reads/writes
   │
-02:00 → background job wakes up
-        "Any chunks older than 7 days?"
-        YES → compress them (takes minutes)
-        NO  → go back to sleep until tomorrow
+02:00 ──► background job wakes up
+          "Any chunks older than 7 days?"
+           YES → compress them (takes minutes)
+           NO  → go back to sleep
 
-Next day 02:00 → wakes up again
+Next day 02:00 ──► wakes up again
 ```
 
-The job lives inside TimescaleDB's own internal scheduler — no OS cron needed:
+It is NOT:
+- Compressing every insert
+- Compressing every minute
+- Running continuously
+
+It IS:
+- A scheduled background job inside TimescaleDB's own scheduler
+- Runs periodically (default every 1 day)
+- Only touches chunks that qualify (older than threshold)
+- Leaves active/recent chunks completely alone
 
 ```sql
--- See the scheduled job TimescaleDB created automatically
+-- See all scheduled jobs TimescaleDB created
 SELECT job_id,
        application_name,
        schedule_interval,
@@ -455,23 +507,41 @@ SELECT job_id,
        last_run_status
 FROM timescaledb_information.jobs;
 
+-- Output:
+-- 1000 | Compression Policy [trades] | 1 day | 2025-03-08 02:00:00 | Success
+
 -- Change when it runs
 SELECT alter_job(1000,
     next_start => '2025-03-08 02:00:00'
 );
 ```
 
-**Three completely separate settings — people always confuse these:**
+### Three completely separate settings — people always confuse these
 
-```mermaid
-graph TD
-    S1["chunk_time_interval = 1 day\nHow WIDE is each chunk\n1 day of data per chunk\nNothing to do with compression"]
-    S2["compress_after = 7 days\nHow OLD before compressing\nOnly compress chunks older than 7 days\nNothing to do with chunk width"]
-    S3["schedule_interval = 1 day\nHow OFTEN the job checks\nWakes up every 1 day to look for qualifying chunks\nNothing to do with chunk width or threshold"]
+```
+┌──────────────────────────────────────────────────────────────────┐
+│  chunk_time_interval = '1 day'                                   │
+│                                                                  │
+│  Question: How WIDE is each chunk?                               │
+│  Answer:   Each chunk covers exactly 1 calendar day of data      │
+│  Has NOTHING to do with compression                              │
+└──────────────────────────────────────────────────────────────────┘
 
-    style S1 fill:#1e3a8a,stroke:#60a5fa,color:#ffffff
-    style S2 fill:#78350f,stroke:#fbbf24,color:#ffffff
-    style S3 fill:#14532d,stroke:#4ade80,color:#ffffff
+┌──────────────────────────────────────────────────────────────────┐
+│  compress_after = '7 days'                                       │
+│                                                                  │
+│  Question: How OLD must a chunk be before compressing?           │
+│  Answer:   Only compress chunks older than 7 days                │
+│  Has NOTHING to do with chunk width                              │
+└──────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────┐
+│  background job schedule_interval                                │
+│                                                                  │
+│  Question: How OFTEN does the job wake up and check?             │
+│  Answer:   Default every 1 day — checks at scheduled time        │
+│  Has NOTHING to do with chunk width or compression threshold     │
+└──────────────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -488,7 +558,7 @@ FROM trades WHERE symbol = 'AAPL'
 GROUP BY 1;
 ```
 
-After 1 year this query scans millions of raw rows. Slow.
+After 1 year this query scans millions of raw rows every single time. Slow.
 
 **The solution — pre-compute the summary once, refresh automatically:**
 
@@ -514,30 +584,28 @@ SELECT add_continuous_aggregate_policy('hourly_ohlcv',
 );
 ```
 
-**Why better than a regular Postgres materialized view:**
+### Why better than a regular Postgres materialized view
 
-```mermaid
-graph TD
-    subgraph Postgres Materialized View — gets slower forever
-        A1["Monday REFRESH — scans ALL 365 days — rebuilds from scratch"]
-        A2["Tuesday REFRESH — scans ALL 365 days again — rebuilds from scratch"]
-        A3["Wednesday REFRESH — scans ALL 365 days again — gets slower every day"]
-        A1 --> A2 --> A3
-    end
+```
+POSTGRES MATERIALIZED VIEW — gets slower every day:
 
-    subgraph TimescaleDB Continuous Aggregate — always fast
-        B1["Monday — compute everything — watermark set to Mon 23:59"]
-        B2["Tuesday refresh — process Tuesday new data only — watermark moves forward"]
-        B3["Wednesday refresh — process Wednesday new data only — always fast"]
-        B1 --> B2 --> B3
-    end
+  Monday    REFRESH → scans ALL 365 days → rebuilds from scratch
+  Tuesday   REFRESH → scans ALL 365 days → rebuilds from scratch
+  Wednesday REFRESH → scans ALL 365 days → rebuilds from scratch
+  ...
+  Gets slower as history grows. A full year = full year scanned every refresh.
 
-    style A1 fill:#7f1d1d,stroke:#f87171,color:#ffffff
-    style A2 fill:#7f1d1d,stroke:#f87171,color:#ffffff
-    style A3 fill:#7f1d1d,stroke:#f87171,color:#ffffff
-    style B1 fill:#14532d,stroke:#4ade80,color:#ffffff
-    style B2 fill:#14532d,stroke:#4ade80,color:#ffffff
-    style B3 fill:#14532d,stroke:#4ade80,color:#ffffff
+
+TIMESCALEDB CONTINUOUS AGGREGATE — always fast:
+
+  Monday    → compute everything → watermark set to Mon 23:59
+                                          │
+  Tuesday   → only process Tue data ──────┘ watermark moves to Tue 23:59
+                                          │
+  Wednesday → only process Wed data ──────┘ watermark moves to Wed 23:59
+
+  Always fast regardless of how much historical data exists.
+  Only new data since the last watermark is ever processed.
 ```
 
 Grafana queries the aggregate (24 rows/day) instead of raw data (millions/day).
@@ -560,17 +628,20 @@ podman run -d --name timescaledb \
   timescale/timescaledb-ha:pg16
 ```
 
-The `-ha` image is PostgreSQL 16 with TimescaleDB already installed. Nothing is removed. All Postgres tools work normally.
+The `-ha` image is PostgreSQL 16 with TimescaleDB already installed inside it.
+Nothing is removed. All Postgres tools (`psql`, `pg_dump`, Grafana, etc.) work
+normally.
 
 After connecting, activate the extension per database — **once only:**
 
 ```sql
--- Run once per database. Safe to run again — IF NOT EXISTS means no error.
+-- Run once per database.
+-- IF NOT EXISTS = safe to run again, no error if already active.
 CREATE EXTENSION IF NOT EXISTS timescaledb;
 ```
 
 Think of it like installing an app vs opening it:
-- The image = app installed on your phone
+- The Docker image = app installed on your phone
 - `CREATE EXTENSION` = you open/activate it in that specific database
 
 ---
@@ -633,7 +704,7 @@ SELECT add_retention_policy('trades',
 );
 ```
 
-After this setup — **you just use it like a normal table forever:**
+After this setup — **you just use it like a normal Postgres table forever:**
 
 ```sql
 -- Normal insert — TimescaleDB routes to correct chunk automatically
@@ -655,82 +726,87 @@ AND bucket > now() - INTERVAL '7 days';
 
 ## 15. The Complete Day-by-Day Lifecycle
 
+### Days 1–7: Raw chunks filling up
+
 ```
-Day 1-7: Chunks filling up with raw data
+Mar 1      Mar 2      Mar 3      Mar 4      Mar 5      Mar 6      Mar 7
+┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐
+│chunk_1 │ │chunk_2 │ │chunk_3 │ │chunk_4 │ │chunk_5 │ │chunk_6 │ │chunk_7 │
+│  raw   │ │  raw   │ │  raw   │ │  raw   │ │  raw   │ │  raw   │ │  raw   │
+└────────┘ └────────┘ └────────┘ └────────┘ └────────┘ └────────┘ └────────┘
+                                                                   ↑ active
+```
+
+### Day 8: First compression run at 02:00
+
+```
+Background job wakes up:
+  chunk_1 = 8 days old  →  YES → compress ✓
+  chunk_2 = 7 days old  →  borderline → skip
+  chunk_3 to chunk_8    →  too recent → skip
+
+Mar 1      Mar 2      Mar 3      ...        Mar 8
+┌────────┐ ┌────────┐ ┌────────┐            ┌────────┐
+│chunk_1 │ │chunk_2 │ │chunk_3 │            │chunk_8 │
+│  COMP  │ │  raw   │ │  raw   │            │  raw   │
+└────────┘ └────────┘ └────────┘            └────────┘
+↑ 90% smaller                               ↑ active
+```
+
+### Day 9 onwards: One chunk compressed per day
+
+```
+Day 9:   chunk_2 compressed
+Day 10:  chunk_3 compressed
+...
+Day 14:  chunk_7 compressed
 
 Mar 1      Mar 2      Mar 3      Mar 4      Mar 5      Mar 6      Mar 7
-[chunk_1]  [chunk_2]  [chunk_3]  [chunk_4]  [chunk_5]  [chunk_6]  [chunk_7]
-  raw        raw        raw        raw        raw        raw        raw ← active
-
-Day 8: Background compression job wakes up at 02:00
-
-  chunk_1 = 8 days old → YES → compress ✓
-  chunk_2 = 7 days old → borderline → skip
-  chunk_3 to chunk_8   → too recent → skip
-
-Mar 1      Mar 2      Mar 3  ...  Mar 8
-[chunk_1]  [chunk_2]  [chunk_3]  [chunk_8]
-compressed   raw        raw        raw ← active
-
-Day 9: Job wakes up again
-  chunk_1 = already compressed → skip
-  chunk_2 = 8 days old → compress ✓
-  ...and so on, one chunk compressed per day
-
-Day 365: Retention job wakes up
-  chunk_1 = 365 days old → DROP instantly
-  Dropping a chunk = dropping one table = near-instant
-  No row-by-row DELETE scan
+┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐
+│chunk_1 │ │chunk_2 │ │chunk_3 │ │chunk_4 │ │chunk_5 │ │chunk_6 │ │chunk_7 │
+│  COMP  │ │  COMP  │ │  COMP  │ │  COMP  │ │  COMP  │ │  COMP  │ │  COMP  │
+└────────┘ └────────┘ └────────┘ └────────┘ └────────┘ └────────┘ └────────┘
 ```
 
-**Full lifecycle — from INSERT to DROP:**
+### Day 365: Retention job drops oldest chunks
 
-```mermaid
-flowchart LR
-    A["INSERT arrives"]
-    B["Routed to correct chunk"]
-    C["Raw chunk\nrow format\nfast writes"]
-    D["Compressed chunk\ncolumnar format\n90% smaller"]
-    E["Chunk DROPPED\ninstantly"]
-    F["Continuous aggregate\nrefreshes hourly"]
-    G["Grafana queries\naggregate"]
-
-    A --> B --> C
-    C -->|"7 days pass"| D
-    D -->|"1 year passes"| E
-    C --> F
-    D --> F
-    F --> G
-
-    style A fill:#1e3a8a,stroke:#60a5fa,color:#ffffff
-    style C fill:#14532d,stroke:#4ade80,color:#ffffff
-    style D fill:#78350f,stroke:#fbbf24,color:#ffffff
-    style E fill:#7f1d1d,stroke:#f87171,color:#ffffff
-    style G fill:#14532d,stroke:#4ade80,color:#ffffff
+```
+chunk_1 = 365 days old → DROP instantly
+Dropping a chunk = dropping one physical table = near-instant
+No row-by-row DELETE scan needed
 ```
 
-**Chunk compression timeline over a year:**
+### Full lifecycle in one view
 
-```mermaid
-gantt
-    title Chunk Lifecycle Over Time
-    dateFormat YYYY-MM-DD
-    axisFormat %b %d
-
-    section chunk_1
-    Raw writes       :active,  2025-03-01, 1d
-    Compressed       :done,    2025-03-08, 357d
-    Dropped          :crit,    2026-03-01, 1d
-
-    section chunk_2
-    Raw writes       :active,  2025-03-02, 1d
-    Compressed       :done,    2025-03-09, 356d
-    Dropped          :crit,    2026-03-02, 1d
-
-    section chunk_3
-    Raw writes       :active,  2025-03-03, 1d
-    Compressed       :done,    2025-03-10, 355d
-    Dropped          :crit,    2026-03-03, 1d
+```
+INSERT arrives
+     │
+     ▼
+TimescaleDB routes to correct chunk by timestamp
+     │
+     ▼
+┌─────────────────────┐
+│   Raw chunk         │  ← fast inserts, recent queries
+│   row format        │
+└─────────────────────┘
+     │
+     │  7 days pass
+     │  background compression job runs
+     ▼
+┌─────────────────────┐
+│   Compressed chunk  │  ← 90% smaller, fast analytical reads
+│   columnar format   │
+└─────────────────────┘
+     │                 ├──► Continuous aggregate refreshes hourly
+     │                 │         │
+     │                 │         ▼
+     │                 │    Grafana queries aggregate
+     │                 │    (24 rows/day not millions)
+     │  1 year passes
+     │  retention job runs
+     ▼
+  DROPPED instantly
+  storage stays bounded forever
 ```
 
 ---
@@ -738,15 +814,15 @@ gantt
 ## 16. When TimescaleDB Is the Wrong Tool
 
 ```
-USE TimescaleDB when:                   AVOID when:
-─────────────────────────────           ──────────────────────────────
-Data always has a timestamp             Data has no time component
-Mostly INSERT, rarely UPDATE            Frequently update historical rows
-Query mostly by time range              Random access patterns
-Data grows forever                      Fixed or small dataset
-Need storage savings on old data        Storage is not a concern
-Grafana dashboards on metrics           General purpose OLTP application
-IoT / trading / monitoring              Transactional app (orders, users)
+USE TimescaleDB when:                  AVOID when:
+──────────────────────────────────     ──────────────────────────────────
+Data always has a timestamp            Data has no time component
+Mostly INSERT, rarely UPDATE           Frequently update historical rows
+Query mostly by time range             Random access patterns
+Data grows forever                     Fixed or small dataset
+Need storage savings on old data       Storage is not a concern
+Grafana dashboards on metrics          General purpose OLTP application
+IoT / trading / monitoring             Transactional app (orders, users)
 ```
 
 **The critical limitation — updates on compressed data:**
@@ -760,14 +836,16 @@ UPDATE trades SET price = 195.5 WHERE time = '09:31' AND symbol = 'AAPL';
 -- 2. Update the one row
 -- 3. Recompress the entire AAPL segment
 -- 4. Write back to disk
--- Much slower, much more disk I/O
+-- → Much slower, much more disk I/O
 ```
 
-TimescaleDB is designed for **append-only** workloads. Historical data does not change. New data keeps arriving. This matches perfectly with: stock ticks, sensor readings, server metrics, event logs.
+TimescaleDB is designed for **append-only** workloads. Historical data does not
+change. New data keeps arriving. This matches perfectly with: stock ticks,
+sensor readings, server metrics, event logs.
 
 ---
 
-## Summary — Three Settings You Must Never Confuse
+## 17. Summary — Three Settings You Must Never Confuse
 
 ```
 chunk_time_interval = '1 day'
@@ -779,16 +857,16 @@ compress_after = '7 days'
   → How OLD must a chunk be before compressing
   → Nothing to do with chunk width
 
-schedule_interval = '1 day'
+schedule_interval = '1 day'  (background job)
   → How OFTEN the compression job wakes up and checks
   → Nothing to do with chunk width or compression threshold
 ```
 
-These three independent settings work together to give you:
+These three independent settings work together:
 
 ```
-Recent data   → raw chunks    → fast inserts, fast recent queries
-Old data      → compressed    → 90% smaller, fast analytical reads
-Very old data → dropped       → storage stays bounded forever
-Dashboards    → aggregates    → pre-computed, instant response
+Recent data   → raw chunks     → fast inserts, fast recent queries
+Old data      → compressed     → 90% smaller, fast analytical reads
+Very old data → dropped        → storage stays bounded forever
+Dashboards    → aggregates     → pre-computed, instant response
 ```

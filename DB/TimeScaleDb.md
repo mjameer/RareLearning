@@ -126,12 +126,12 @@ graph TD
     H --> C3
     H --> CN
 
-    style Q fill:#dbeafe,stroke:#3b82f6
-    style H fill:#fef08a,stroke:#ca8a04
-    style C1 fill:#bbf7d0,stroke:#16a34a
-    style C2 fill:#bbf7d0,stroke:#16a34a
-    style C3 fill:#bbf7d0,stroke:#16a34a
-    style CN fill:#fca5a5,stroke:#dc2626
+    style Q fill:#1e3a8a,stroke:#60a5fa,color:#ffffff
+    style H fill:#78350f,stroke:#fbbf24,color:#ffffff
+    style C1 fill:#14532d,stroke:#4ade80,color:#ffffff
+    style C2 fill:#14532d,stroke:#4ade80,color:#ffffff
+    style C3 fill:#14532d,stroke:#4ade80,color:#ffffff
+    style CN fill:#7f1d1d,stroke:#f87171,color:#ffffff
 ```
 
 **Why does this matter — Chunk Exclusion:**
@@ -168,14 +168,14 @@ graph TD
     P --> R2
     P --> R3
 
-    style Q fill:#dbeafe,stroke:#3b82f6
-    style P fill:#fef08a,stroke:#ca8a04
-    style S1 fill:#fca5a5,stroke:#dc2626
-    style S2 fill:#fca5a5,stroke:#dc2626
-    style S3 fill:#fca5a5,stroke:#dc2626
-    style R1 fill:#bbf7d0,stroke:#16a34a
-    style R2 fill:#bbf7d0,stroke:#16a34a
-    style R3 fill:#bbf7d0,stroke:#16a34a
+    style Q fill:#1e3a8a,stroke:#60a5fa,color:#ffffff
+    style P fill:#78350f,stroke:#fbbf24,color:#ffffff
+    style S1 fill:#7f1d1d,stroke:#f87171,color:#ffffff
+    style S2 fill:#7f1d1d,stroke:#f87171,color:#ffffff
+    style S3 fill:#7f1d1d,stroke:#f87171,color:#ffffff
+    style R1 fill:#14532d,stroke:#4ade80,color:#ffffff
+    style R2 fill:#14532d,stroke:#4ade80,color:#ffffff
+    style R3 fill:#14532d,stroke:#4ade80,color:#ffffff
 ```
 
 ---
@@ -244,11 +244,11 @@ graph TD
         G["Retention Job — drops chunks older than threshold"]
     end
 
-    style A fill:#dbeafe,stroke:#3b82f6
-    style D fill:#bbf7d0,stroke:#16a34a
-    style E fill:#fef08a,stroke:#ca8a04
-    style F fill:#fef08a,stroke:#ca8a04
-    style G fill:#fef08a,stroke:#ca8a04
+    style A fill:#1e3a8a,stroke:#60a5fa,color:#ffffff
+    style D fill:#14532d,stroke:#4ade80,color:#ffffff
+    style E fill:#78350f,stroke:#fbbf24,color:#ffffff
+    style F fill:#78350f,stroke:#fbbf24,color:#ffffff
+    style G fill:#78350f,stroke:#fbbf24,color:#ffffff
 ```
 
 | Activity | When | What TimescaleDB Does |
@@ -366,8 +366,8 @@ flowchart TD
 
     A --> B --> C --> D --> E
 
-    style A fill:#dbeafe,stroke:#3b82f6
-    style E fill:#bbf7d0,stroke:#16a34a
+    style A fill:#1e3a8a,stroke:#60a5fa,color:#ffffff
+    style E fill:#14532d,stroke:#4ade80,color:#ffffff
 ```
 
 ---
@@ -469,9 +469,9 @@ graph TD
     S2["compress_after = 7 days\nHow OLD before compressing\nOnly compress chunks older than 7 days\nNothing to do with chunk width"]
     S3["schedule_interval = 1 day\nHow OFTEN the job checks\nWakes up every 1 day to look for qualifying chunks\nNothing to do with chunk width or threshold"]
 
-    style S1 fill:#dbeafe,stroke:#3b82f6
-    style S2 fill:#fef08a,stroke:#ca8a04
-    style S3 fill:#bbf7d0,stroke:#16a34a
+    style S1 fill:#1e3a8a,stroke:#60a5fa,color:#ffffff
+    style S2 fill:#78350f,stroke:#fbbf24,color:#ffffff
+    style S3 fill:#14532d,stroke:#4ade80,color:#ffffff
 ```
 
 ---
@@ -532,12 +532,12 @@ graph TD
         B1 --> B2 --> B3
     end
 
-    style A1 fill:#fca5a5,stroke:#dc2626
-    style A2 fill:#fca5a5,stroke:#dc2626
-    style A3 fill:#fca5a5,stroke:#dc2626
-    style B1 fill:#bbf7d0,stroke:#16a34a
-    style B2 fill:#bbf7d0,stroke:#16a34a
-    style B3 fill:#bbf7d0,stroke:#16a34a
+    style A1 fill:#7f1d1d,stroke:#f87171,color:#ffffff
+    style A2 fill:#7f1d1d,stroke:#f87171,color:#ffffff
+    style A3 fill:#7f1d1d,stroke:#f87171,color:#ffffff
+    style B1 fill:#14532d,stroke:#4ade80,color:#ffffff
+    style B2 fill:#14532d,stroke:#4ade80,color:#ffffff
+    style B3 fill:#14532d,stroke:#4ade80,color:#ffffff
 ```
 
 Grafana queries the aggregate (24 rows/day) instead of raw data (millions/day).
@@ -702,11 +702,11 @@ flowchart LR
     D --> F
     F --> G
 
-    style A fill:#dbeafe,stroke:#3b82f6
-    style C fill:#bbf7d0,stroke:#16a34a
-    style D fill:#fef08a,stroke:#ca8a04
-    style E fill:#fca5a5,stroke:#dc2626
-    style G fill:#bbf7d0,stroke:#16a34a
+    style A fill:#1e3a8a,stroke:#60a5fa,color:#ffffff
+    style C fill:#14532d,stroke:#4ade80,color:#ffffff
+    style D fill:#78350f,stroke:#fbbf24,color:#ffffff
+    style E fill:#7f1d1d,stroke:#f87171,color:#ffffff
+    style G fill:#14532d,stroke:#4ade80,color:#ffffff
 ```
 
 **Chunk compression timeline over a year:**

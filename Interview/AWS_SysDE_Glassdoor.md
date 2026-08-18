@@ -179,10 +179,43 @@ into categories.
 
 ---
 
-## Notes on what got merged as duplicates
-- "What is the DNS flow?" / "Describe how DNS works." → merged as one topic under Networking, phrasing kept from both since they weren't verbatim identical.
-- "What happens when you navigate to amazon.com?" / "what happens when you type amazon in a browser" → merged into one line under Networking.
-- "Why Amazon? / coolest thing you've done" appeared twice verbatim → kept once under Behavioral.
-- The security-basics/hashing/crypto passage appeared twice, word-for-word → kept once under Security, with a note that it recurred.
-- "Design a parking lot" appeared in two separate lists → kept once under System Design.
-- Log-file processing shows up in three different phrasings (log stats, IP with biggest cumulative size, lowest-latency user, average transaction per IP) — these were **kept as separate entries** since they describe distinct coding tasks, not the same question repeated.
+
+
+# AWS SysDE — Log-File Related Questions (Grouped)
+
+Every question from the original Glassdoor dump that involves parsing, processing,
+or designing around log files, pulled out and grouped together as its own set.
+
+---
+
+## Coding tasks — parsing / processing a log file
+
+- Phone screen consisted of 2 Leadership Principles questions, then a coding task related to a log file: extract data from the log file using Python.
+- Coding exercise: write a function to read a log file and print basic statistics.
+- Process two log files and compute the average transaction size for each IP.
+- Given a log with a specified format, write a script to find the IP that accumulated the biggest total size accessed.
+- Coding question: find the user with the lowest latency from a log file, e.g.:
+  ```
+  200,John,/home,60ms
+  200,Sarah,/log,13ms
+  500,Jack,/home,40ms
+  ```
+
+## System design — log infrastructure (related, but a design question rather than a coding task)
+
+- A design question for a tool that can collect logs from all servers in a region. Also: if an instance suddenly went missing, how would you go about figuring out the issue?
+
+---
+
+## Why these are worth drilling as a set
+
+All five coding tasks share the same shape: **read structured/semi-structured text
+line by line, parse fields (often comma- or space-delimited), and compute some
+aggregate** — a count, an average, a max, or a "find the extreme value" lookup,
+usually grouped by a key like IP or user. That's a distinct skill from the 17
+"design a class" LeetCode problems — it's closer to basic text parsing +
+`collections.defaultdict` / `Counter` work than to OOP API design.
+
+If you want, I can write out Python solutions for a representative version of
+each of these five (a plausible log format + parser + aggregation), sized for
+practicing in your remaining prep days.

@@ -444,6 +444,33 @@ the parent's own code path to run `wait()`), or, if the parent is stuck/
 unresponsive, kill the parent — the zombie then gets reparented to `init`/
 `systemd` (PID 1), which reaps it automatically.
 
+**What does "reap" actually mean?** It's the term for a parent **reading a
+finished child's exit status**, which is the action that lets the kernel
+fully remove that process's table entry. Full lifecycle:
+
+1. A parent creates a child (`fork()`).
+2. The child runs, then exits — but the kernel keeps a small leftover record
+   (PID + exit status), it doesn't erase the process immediately.
+3. That leftover record is the **zombie** — the process itself has stopped
+   doing anything, but its "report card" is still sitting in the process
+   table, waiting to be picked up.
+4. The parent is expected to call `wait()`/`waitpid()` at some point — the
+   syscall that reads that exit status. The moment it does, the kernel
+   considers the child fully reaped and deletes the entry.
+5. If the parent never calls `wait()` (buggy, stuck, badly written), the
+   zombie sits there forever — nobody's claimed its exit status.
+
+Think of it like harvesting a crop that's already grown and just sitting in
+the field — the child already did all its "growing" (running); reaping is
+just the quick final act of collecting the result, done by the parent, not
+the child.
+
+**Why PID 1 "reaps it automatically":** if the parent dies before reaping its
+child, the child (now an "orphan") gets reparented to `init`/`systemd`
+(PID 1). PID 1 has a special job baked in: it periodically calls `wait()` on
+anything reparented to it this way, cleaning up zombies that would otherwise
+have no legitimate parent left to claim them.
+
 ---
 
 ## 11. What is thrashing in an operating system?
@@ -452,6 +479,47 @@ When RAM is so oversubscribed that the system spends more time swapping
 pages in/out of disk than doing real work — throughput collapses even though
 the CPU looks "busy." Caused by too many processes, or too little RAM, for
 the combined working set currently in use.
+
+**The full mechanism:** every process has a "working set" — the pages of
+data/code it's actively using right now. The kernel doesn't guarantee all of
+it sits in physical RAM — it can page some out to swap when RAM is tight, and
+page it back in on demand.
+
+- **Enough RAM:** working sets fit comfortably, page-ins/outs are rare,
+  everything runs at normal speed.
+- **Not enough RAM — the spiral:** too many processes (or too-large working
+  sets) compete for scarce RAM → kernel evicts pages to swap, guessing which
+  are least likely needed soon → a process then touches a page that just got
+  evicted → **page fault** → kernel fetches it back from disk (orders of
+  magnitude slower than RAM) → to make room, it evicts a *different* page,
+  possibly needed by someone else a moment later → repeat, constantly, across
+  every competing process. The system spends nearly all its time shuffling
+  pages via disk I/O, almost none running actual application code.
+
+**Why "the CPU looks busy" is misleading:** `top` might show high CPU or a
+high load average, suggesting the CPU is the bottleneck — but much of that
+"busy" time is the kernel handling page faults and I/O wait, not useful work.
+The system is active, but barely any of that activity is your application
+making progress — the dashboard can lie to you if you don't also check
+`free -h` and swap activity.
+
+**Spotting it in practice:**
+```
+free -h        # swap usage climbing/actively churning — not just "some swap used," which is normal
+vmstat 1 5     # watch si/so columns (swap-in/swap-out, pages per sec) — consistently high = thrashing
+```
+
+**The fix is never "add more swap"** — that just gives the system a bigger
+area to thrash within, without addressing "not enough RAM for the actual
+working set." Real fixes: add RAM, reduce concurrent processes/containers on
+the box, or tune the app to use less memory (smaller caches, smaller JVM heap).
+
+**One-sentence version:** *"Thrashing is when there's so little free RAM
+relative to what's actively being used that the system is constantly
+swapping pages in and out of disk just to keep processes running — most of
+the system's time goes to page faults and disk I/O instead of real
+computation, and more swap doesn't fix it, only more RAM or less memory
+pressure does."*
 
 ---
 
@@ -489,6 +557,32 @@ class Scheduler:
 Lower `priority` number runs first (mirrors `nice`). If asked about
 preemption or time-slicing, mention round-robin as the next step up —
 describe it, don't over-engineer live.
+
+**What is `priority` in this code, exactly?** It's a plain integer **you pass
+in yourself** when calling `add_process` — the class doesn't compute it, the
+caller decides how important each process is, the same way you'd set a
+`nice` value on a real process. Lower number = higher importance = runs
+first, since `heapq` is a min-heap (always pops the smallest value first).
+
+Traced with actual calls:
+```python
+s = Scheduler()
+s.add_process("backup_job", 10)     # low importance
+s.add_process("web_request", 1)     # high importance
+s.add_process("log_flush", 5)       # medium importance
+
+print(s.run_next())   # "web_request"  (priority 1 — smallest — runs first)
+print(s.run_next())   # "log_flush"    (priority 5 — next smallest)
+print(s.run_next())   # "backup_job"   (priority 10 — last)
+```
+
+**Why `self.counter` rides along in the tuple:** `heapq` compares tuples
+element by element — `(priority, counter, name)` compares by `priority`
+first, and only falls back to `counter` if two processes tie on priority.
+Since `counter` increments by 1 on every add, it's really just recording
+insertion order — so two processes at the same priority still come out
+first-in-first-out, instead of `heapq` trying to compare the `name` strings
+directly (which could error, or give an arbitrary alphabetical tie-break).
 
 ---
 

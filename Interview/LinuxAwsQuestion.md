@@ -727,20 +727,106 @@ pointers to data blocks — **not the filename** (filenames live in directory
 entries pointing to an inode). You can run out of inodes (too many small
 files) while `df` still shows free space — a separate limit from raw bytes.
 
+**Analogy:** the inode is a library card (owner, size, timestamps, and which
+shelf/blocks the actual data sits at). The filename is just a label in a
+directory pointing *at* a card — it isn't part of the card itself.
+
+**Why hard links prove the filename/inode split — a real walkthrough:**
+```
+$ echo "hello world" > report.txt
+$ ls -i report.txt
+524288 report.txt              # inode number for the data
+
+$ ln report.txt backup.txt     # creates a 2nd NAME pointing at the SAME inode — no data copied
+$ ls -i report.txt backup.txt
+524288 report.txt
+524288 backup.txt              # same inode number — same underlying data, two labels
+
+$ rm report.txt
+$ cat backup.txt
+hello world                    # data survives — report.txt was just one of two names pointing at it
+```
+Every inode keeps a **link count** — how many filenames currently point at
+it. Creating the hard link bumped it from 1→2; removing `report.txt` dropped
+it back to 2→1. Only when the *last* filename pointing at an inode is
+removed (link count hits 0) does the kernel actually reclaim the disk space
+— `rm` only ever removes a name, never data directly. This is also why tools
+like `rsync --link-dest` can create what look like multiple full backups
+while actually storing unchanged files only once — hard links are instant
+and free, no data copied.
+
 **OOM killer:** when the system genuinely runs out of memory and can't
 reclaim more, the kernel picks a process to kill (scored via `oom_score`) to
 prevent total system lockup. Check via `dmesg | grep -i "out of memory"`.
 
-**Disk space cleanup:** `df -h` / `du -sh` to find what's large; common
-culprits are log files, old kernels/package caches, Docker images, `/tmp`.
+**Analogy:** an office building where every floor is drawing power and the
+supply is maxed out — if nothing changes, the whole building's grid trips at
+once. Facilities cuts power to one floor to save the rest. The OOM killer is
+that forced sacrifice: once RAM+swap are truly exhausted and nothing more
+can be freed by normal means (cache already squeezed dry), the kernel kills
+whichever process scores worst on `oom_score` — usually the single biggest
+memory consumer, since killing it frees the most room fastest. This is why a
+service that "just vanished" with no error in its own logs is a signature of
+an OOM kill — the process was terminated from outside, instantly, with no
+chance to log its own death; the only record lives in the kernel's log
+(`dmesg`), not the app's.
+
+**Disk space cleanup — a real walkthrough, drilling one level deeper each round:**
+```
+$ du -sh /* 2>/dev/null | sort -rh | head
+15G   /var
+12G   /home
+8.2G  /usr
+
+$ du -sh /var/* 2>/dev/null | sort -rh | head    # step INSIDE the biggest offender, ask again
+12G   /var/log
+2.1G  /var/lib
+
+$ du -sh /var/log/* 2>/dev/null | sort -rh | head   # one level deeper again
+11G   /var/log/myapp
+
+$ ls -lhS /var/log/myapp | head -5    # small enough now to list individual files, sorted by size
+-rw-r--r-- 1 root root 10G Aug 22 09:00 debug.log
+```
+Same command re-run each round, just one directory further in — stop the
+moment the numbers stop being surprising (spread evenly across several
+folders = no single culprit; one file explaining almost everything = found it).
+Common culprits: log files, old kernels/package caches, Docker images/layers, `/tmp`.
+
+**Why `2>/dev/null` is tacked onto the `du` command:** every command has two
+separate output streams — **stdout** (`1`, normal output) and **stderr**
+(`2`, error messages) — normally both print to your screen mixed together.
+`du -sh /*` tries to walk into every folder under `/`, including ones you
+lack permission for, and prints a `Permission denied` line for each one,
+interleaved with your actual size results. `2>/dev/null` redirects just the
+error stream into `/dev/null` — a special file that discards anything
+written to it — leaving only the clean, successful measurements on screen.
+The errors still happen (those folders just aren't counted), but you're not
+forced to read the noise. Using this without being asked is a small but real
+signal that you've actually run this command for real, not just read about it.
 
 **`fstab` (`/etc/fstab`):** config file defining how partitions/devices are
 mounted at boot — device, mount point, filesystem type, options — so mounts
 happen automatically without manual `mount` commands.
 
+**Why it matters practically:** `mount` run by hand is temporary — it only
+lasts until the next reboot, at which point the kernel forgets the
+attachment entirely (the data isn't gone, just no longer attached to a
+folder). `fstab` is what the boot process reads automatically every startup,
+re-running the equivalent `mount` for every line in the file with no human
+involved. Attach a new disk to an EC2 instance manually without adding it to
+`fstab`, and after a reboot the data looks "missing" — it's not, it's just unattached.
+
 **Swap space:** disk-backed overflow for RAM. Inactive pages get written to
 swap when RAM fills, so RAM can be reused. Slow (it's disk), so heavy
 swapping is itself a symptom of a memory problem, not a fix.
+
+**Analogy:** RAM is a desk (fast, small); swap is a filing cabinet down the
+hall (much bigger, slow to reach). Moving pages to swap isn't data loss —
+just relocation somewhere slower. Some light, occasional swap use is normal
+and healthy (a safety valve for rare spikes). *Heavy, continuous* swapping
+means the workload genuinely needs more RAM than exists — adding more swap
+just delays hitting that wall longer, it doesn't remove it.
 
 ---
 

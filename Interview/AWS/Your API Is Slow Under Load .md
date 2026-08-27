@@ -1,850 +1,899 @@
-# System Design: Distributed Log Collection + API Debugging
-> Senior / Principal Engineer Level — Three interview questions unified under one observability framework.
-> Modeled on the Ticket Master pattern: Requirements → Entities → API → HLD → Deep Dives.
+# System Design: Your API Is Slow Under Load — Debug It
+> Senior / Principal Engineer Level
+> Most frequently asked debugging question across system design interviews.
+> Treat it like a system design: Requirements → Understand the System → Hypotheses → Investigation → Fix → Prevent
 
 ---
 
-## The Three Questions This Covers
+## Why This Question Is Asked
 
-| Question | Type | What They're Testing |
-|---|---|---|
-| **Design a tool that collects logs from all servers in a region** | System Design | Distributed systems, data pipelines, scale |
-| **An instance suddenly went missing — how do you figure out the issue?** | Debugging / Investigation | Operational maturity, observability instincts |
-| **After 200 API calls you start getting 5xx/4xx errors — how do you debug this?** | Debugging under load | Systematic thinking, knowing what to look at first |
+This is not a trivia question. The interviewer is testing:
 
-> **Principal-level framing:** These are not three separate questions. They are all expressions of the same underlying problem — **you cannot operate a distributed system you cannot observe**. A log collection system is the infrastructure that makes the debugging questions answerable. Walk into any of these questions with that framing and you immediately signal seniority.
-
----
-
-## Interview Roadmap (Same Pattern as Ticket Master)
-
-| Phase | Time | Goal |
-|---|---|---|
-| Requirements | 5–8 min | Functional + non-functional; scope the problem |
-| Core Entities | 2–3 min | What data flows through the system |
-| APIs | 3–5 min | Ingestion, query, alerting interfaces |
-| High-Level Design | 15 min | Simple pipeline satisfying all FRs |
-| Deep Dives | 15 min | Scale, fault tolerance, missing instance, API debugging |
-
----
-
-## Part 1: Design a Distributed Log Collection System
-
----
-
-### 1. Requirements
-
-#### Functional Requirements
-
-| # | Requirement |
+| What They Want to See | What They're Listening For |
 |---|---|
-| 1 | The system should **collect logs from all servers** in a region in real time |
-| 2 | Logs should be **queryable** — filter by server, service, time range, severity, keyword |
-| 3 | The system should **alert** when error rates cross a threshold |
-| 4 | Logs should be **durable** — not lost if a collection agent crashes |
-| 5 | The system should **detect missing/dead instances** and alert on them |
+| Do you panic and guess? | Systematic, signal-driven approach |
+| Do you know your observability tools? | Metrics → Traces → Logs — in that order |
+| Do you know distributed systems failure modes? | Thread pools, connection pools, GC, cascading |
+| Do you understand the difference between cause and symptom? | Latency is a symptom. What caused it? |
+| Can you prioritize under pressure? | Triage the blast radius first, debug second |
 
-**Out of scope:** Multi-region replication, log-based billing, RBAC per log stream, compliance redaction (acknowledge, don't design).
-
-> **Clarify early:** Are we collecting structured logs (JSON) or unstructured (raw text)? Both? This affects parsing complexity. Assume both — structured preferred, unstructured handled.
+> **Principal-level framing:** "Before I touch any code, I want to understand what signals we have and build a timeline. A slow API is a symptom, not a root cause. My job is to find the cause — and I do that by reading what the system is already telling me."
 
 ---
 
-#### Non-Functional Requirements
+## Interview Roadmap
 
-| Requirement | Why It Matters Here |
+| Phase | Goal |
 |---|---|
-| **High availability for ingestion** | If the log pipeline goes down during an incident, you're blind exactly when you need visibility most. Ingestion must never be the single point of failure. |
-| **Eventual consistency for queries** | A log appearing 2–5 seconds late in search is acceptable. Logs are append-only; strict ordering within a query window matters more than global ordering. |
-| **Durability — no log loss** | Logs are the audit trail. Losing them during a crash is unacceptable. At-least-once delivery is required. |
-| **Low ingestion latency** | Alert pipelines depend on logs arriving quickly. Target: logs visible in query within 5–10 seconds of emission. |
-| **High write throughput** | A fleet of 10,000 servers each emitting 1,000 log lines/second = 10M lines/second. The pipeline must handle this without backpressure. |
-| **Cost-efficient storage** | Logs are high volume, mostly cold after 24 hours. Hot/warm/cold tiering is essential — not everything lives in expensive fast storage. |
-| **Scalability for fleet size changes** | Auto-scaling events mean instances appear and disappear. The collection system must handle dynamic fleet topology without manual reconfiguration. |
-
-> **Senior/Principal signal:** Consistency split — same pattern as Ticket Master. Ingestion path needs durability (strong guarantee); query path is fine with eventual consistency. Frame it this way explicitly.
-
----
-
-### 2. Core Entities
-
-```
-┌──────────────────────────────────┐
-│           LogEntry                │  ← atomic unit of data
-│  id (UUID)                        │
-│  server_id → Server.id (FK)       │
-│  service_name                     │
-│  severity (INFO/WARN/ERROR/FATAL) │
-│  message (TEXT)                   │
-│  structured_data (JSONB)          │  ← parsed fields if structured
-│  timestamp                        │
-│  ingested_at                      │
-│  region                           │
-└──────────────────────────────────┘
-
-┌──────────────────────────────────┐
-│             Server                │  ← emitting instance
-│  id (UUID)                        │
-│  hostname                         │
-│  ip_address                       │
-│  region                           │
-│  tags (string[])                  │  ← e.g. {api-server, prod, us-east-1}
-│  status (alive / missing / dead)  │
-│  last_seen_at                     │  ← updated on every log received
-│  registered_at                    │
-└──────────────────────────────────┘
-
-┌──────────────────────────────────┐
-│          AlertRule                │
-│  id (UUID)                        │
-│  name                             │
-│  condition (JSONB)                │  ← e.g. error_rate > 5% over 1 min
-│  severity                         │
-│  notification_channel             │  ← PagerDuty, Slack, email
-│  enabled (bool)                   │
-└──────────────────────────────────┘
-
-┌──────────────────────────────────┐
-│          AlertEvent               │
-│  id (UUID)                        │
-│  rule_id → AlertRule.id (FK)      │
-│  server_id → Server.id (FK)       │
-│  triggered_at                     │
-│  resolved_at (nullable)           │
-│  message                          │
-└──────────────────────────────────┘
-```
-
-### Relationship Summary
-
-| From | Field | Points To | Cardinality | Notes |
-|---|---|---|---|---|
-| `LogEntry` | `server_id` | `Server.id` | N:1 | Many log lines from one server |
-| `AlertEvent` | `rule_id` | `AlertRule.id` | N:1 | Many firings of one rule |
-| `AlertEvent` | `server_id` | `Server.id` | N:1 | Which server triggered the alert |
+| **Step 0: Triage** | Is this an incident? Restore service first, debug second |
+| **Step 1: Understand the system** | What does the request path look like end to end? |
+| **Step 2: Establish a baseline** | Metrics — when did it start, what changed? |
+| **Step 3: Find the slow component** | Distributed traces — where is time being spent? |
+| **Step 4: Read what the system said** | Logs — what did the system tell us? |
+| **Step 5: Go deep on the suspect** | Component-specific investigation |
+| **Step 6: Fix + verify** | Change one thing, measure, confirm |
+| **Step 7: Prevent recurrence** | Alerts, load tests, capacity planning |
 
 ---
 
-### 3. APIs
+## Step 0: Triage First — Are Users Being Impacted Right Now?
 
-#### Log Ingestion (Agent → Collector) — Internal
-```
-POST /internal/ingest
-Body: {
-  server_id: string,
-  service_name: string,
-  logs: [
-    {
-      severity: "ERROR" | "WARN" | "INFO" | "DEBUG" | "FATAL",
-      message: string,
-      structured_data: object | null,
-      timestamp: ISO8601
-    }
-  ]
-}
-
-Response: { accepted: number, dropped: number }
-```
-> Batch ingestion — agents buffer locally and flush every 1–5 seconds. Never one log line per HTTP call.
-
-#### Query Logs
-```
-GET /logs/search
-Query params:
-  server_id?: string
-  service_name?: string
-  severity?: string[]          // ["ERROR", "FATAL"]
-  keyword?: string             // full-text search
-  from: ISO8601
-  to: ISO8601
-  limit?: number               // default 100, max 1000
-  cursor?: string              // pagination
-
-Response: {
-  logs: LogEntry[],
-  next_cursor: string | null,
-  total_matched: number
-}
-```
-
-#### Get Server Status
-```
-GET /servers/{serverId}
-
-Response: {
-  server: Server,
-  last_seen_at: ISO8601,
-  status: "alive" | "missing" | "dead",
-  log_rate_per_second: number
-}
-```
-
-#### List All Servers in Region
-```
-GET /servers?region=us-east-1&status=missing
-
-Response: Server[]
-```
-> This is the endpoint that answers "which instances are missing?" — key for the dead instance investigation.
-
-#### Alert Rules
-```
-POST /alerts/rules          — create a rule
-GET  /alerts/rules          — list rules
-GET  /alerts/events         — list triggered alerts (filterable by server, rule, time)
-```
-
----
-
-### 4. High-Level Design
-
-#### Architecture
+Before any debugging, answer this:
 
 ```
-┌──────────────────────────────────────────────────────────────────┐
-│                    SERVER FLEET (per region)                       │
-│                                                                    │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐            │
-│  │   Server A   │  │   Server B   │  │   Server C   │  ...       │
-│  │ Log Agent    │  │ Log Agent    │  │ Log Agent    │            │
-│  │ (sidecar)    │  │ (sidecar)    │  │ (sidecar)    │            │
-│  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘            │
-└─────────┼────────────────┼────────────────┼───────────────────────┘
-          │                │                │
-          │  batch POST /internal/ingest every 1-5s
-          ▼                ▼                ▼
-┌──────────────────────────────────────────────────────────────────┐
-│               Collector Service (horizontally scaled)             │
-│  - Validates + parses log batches                                 │
-│  - Updates Server.last_seen_at                                    │
-│  - Publishes to Kafka                                             │
-└──────────────────────────────────┬───────────────────────────────┘
-                                   │
-                                   ▼
-                    ┌──────────────────────────┐
-                    │   Kafka (Log Stream)      │
-                    │   topic: logs.{region}    │
-                    │   topic: servers.heartbeat│
-                    └────────────┬─────────────┘
-                                 │
-              ┌──────────────────┼──────────────────┐
-              │                  │                  │
-              ▼                  ▼                  ▼
-   ┌──────────────────┐ ┌──────────────┐  ┌──────────────────┐
-   │  Indexer Service │ │ Alert Engine │  │ Instance Monitor │
-   │                  │ │              │  │                  │
-   │  writes to       │ │ evaluates    │  │ detects missing  │
-   │  Elasticsearch   │ │ alert rules  │  │ servers          │
-   └────────┬─────────┘ └──────┬───────┘  └──────┬───────────┘
-            │                  │                  │
-            ▼                  ▼                  ▼
-   ┌──────────────┐   ┌──────────────┐   ┌──────────────────┐
-   │Elasticsearch │   │  PagerDuty   │   │   PostgreSQL      │
-   │(hot storage) │   │  Slack etc.  │   │  (server registry)│
-   └──────┬───────┘   └──────────────┘   └──────────────────┘
-          │
-          │  after 7 days
-          ▼
-   ┌──────────────┐
-   │  S3 (cold    │
-   │   storage)   │
-   └──────────────┘
-
-┌──────────────────────────────────────────────────────────────────┐
-│                      Query Service                                 │
-│  serves GET /logs/search → reads from Elasticsearch               │
-│  serves GET /servers → reads from PostgreSQL                      │
-└──────────────────────────────────────────────────────────────────┘
-```
-
----
-
-#### Walking Through Each Functional Requirement
-
-**FR1: Collect logs from all servers**
-
-Every server runs a **Log Agent** as a sidecar process. The agent:
-- Tails log files (e.g. `/var/log/app/*.log`) or reads from stdout/stderr
-- Buffers log lines in memory (with a local disk fallback — see fault tolerance)
-- Flushes a batch every 1–5 seconds to the **Collector Service** via `POST /internal/ingest`
-- On each flush, updates `Server.last_seen_at` in the Collector (heartbeat piggybacks on log delivery)
-
-The Collector validates, parses (JSON detection), and **publishes to Kafka** topic `logs.{region}`. It never writes directly to the storage layer — Kafka is the durable buffer.
-
-**FR2: Queryable logs**
-
-The **Indexer Service** consumes from Kafka and writes to **Elasticsearch**. Elasticsearch builds an inverted index on `message`, `service_name`, `severity`, and parsed structured fields — enabling fast full-text search and filtered queries.
-
-The **Query Service** translates `GET /logs/search` parameters into Elasticsearch DSL queries and returns paginated results.
-
-**FR3: Alerting**
-
-The **Alert Engine** consumes from the same Kafka topic (different consumer group — fan-out). It evaluates alert rules in a sliding window: "more than 5% of log lines from service X in the last 60 seconds have severity ERROR." When a rule fires, it writes an `AlertEvent` and calls the notification channel (PagerDuty, Slack webhook, etc.).
-
-**FR4: Durability**
-
-Three layers:
-1. **Agent local buffer** — if the Collector is unreachable, the agent buffers to disk. Flushes when connection resumes.
-2. **Kafka retention** — messages are retained on disk for 24–48 hours. If the Indexer crashes and restarts, it replays from the last committed offset. No logs lost.
-3. **S3 archival** — after 7 days in Elasticsearch (hot), logs are exported to S3 (cold). Cheap, queryable with Athena.
-
-**FR5: Detect missing instances**
-
-The **Instance Monitor** service:
-- Queries PostgreSQL for servers where `last_seen_at < NOW() - threshold` (e.g. 60 seconds)
-- Marks them `status = missing`
-- Fires an alert via the Alert Engine
-- If still missing after 5 minutes → marks `status = dead`
-
-The `last_seen_at` is updated on every log batch received by the Collector — log delivery is the heartbeat. No separate heartbeat endpoint needed.
-
----
-
-### 5. Deep Dives
-
-#### Deep Dive 1: Scale — 10M Log Lines Per Second
-
-**Problem:** 10,000 servers × 1,000 lines/second = 10M lines/second. That's ~1–5 GB/second of raw data depending on line size.
-
-**Collector scaling:**
-- Collector is stateless — horizontally scale behind a load balancer
-- Each Collector instance handles batches from N agents
-- Agents are configured with multiple Collector endpoints and round-robin
-
-**Kafka scaling:**
-- Partition the `logs.{region}` topic by `server_id` or `service_name`
-- More partitions = more parallelism for consumers (Indexer, Alert Engine)
-- Kafka can handle millions of messages/second with proper partition count
-
-**Elasticsearch scaling:**
-- Shard by time (daily indices: `logs-2026-08-26`)
-- Hot nodes for recent data (fast SSDs); warm nodes for older data (cheaper HDDs)
-- Index rollover: when an index hits a size threshold, roll to a new one
-- Curator or ILM (Index Lifecycle Management) handles hot → warm → cold → delete transitions automatically
-
-**Agent backpressure:**
-- If Kafka is slow or the Collector is overloaded, agents accumulate in their local buffer
-- Buffer has a max size (e.g. 100MB on disk). If exceeded, oldest logs are dropped (with a counter metric on the drop rate)
-- This is a deliberate trade-off — prefer dropping old verbose logs over crashing the agent
-
----
-
-#### Deep Dive 2: Fault Tolerance — Agent Crashes, Collector Crashes, Kafka Goes Down
-
-| Failure | Impact | Recovery |
-|---|---|---|
-| **Agent crashes** | Logs from that server stop flowing | Agent restarts automatically (systemd/k8s); local buffer survives on disk; resumes from last flush position |
-| **Collector instance crashes** | Agents retry with exponential backoff; other Collector instances absorb traffic | Stateless — new instance spins up immediately |
-| **Kafka partition leader fails** | Brief pause (~15–30s) while Kafka elects new leader | Kafka replication (RF=3) makes this transparent to producers after leader election |
-| **Indexer crashes** | Log ingestion continues; Kafka retains messages | Indexer restarts, replays from committed offset — no data loss, just indexing lag |
-| **Elasticsearch goes down** | Querying fails; ingestion continues into Kafka | Kafka acts as buffer; Indexer resumes when ES recovers; alerts still work via Alert Engine consuming Kafka directly |
-
-> **Key insight:** Kafka is the durability layer, not Elasticsearch. Elasticsearch is the query layer. If ES goes down, you lose query ability temporarily but zero logs. This is the right trade-off.
-
----
-
-#### Deep Dive 3: Storage Tiering and Cost
-
-```
-Age          Storage         Cost        Query Speed
-─────────────────────────────────────────────────────
-0–7 days     Elasticsearch   $$$         Sub-second
-7–30 days    Elasticsearch   $$          Sub-second (warm nodes)
-30–90 days   S3 + Parquet    $           Minutes (Athena)
-90+ days     S3 Glacier      cents       Hours (restore first)
-```
-
-**Implementation:**
-- Elasticsearch ILM policy: hot (0–7d) → warm (7–30d) → delete from ES
-- Before deletion, the Archiver Service exports to S3 as gzipped Parquet files partitioned by `region/date/service_name`
-- AWS Athena or Spark can query S3 logs when historical analysis is needed
-- This keeps Elasticsearch lean and fast for the recent hot window that matters for ops
-
----
-
-## Part 2: If an Instance Suddenly Went Missing — Investigation Playbook
-
-> This is an operational debugging question. The interviewer wants to see a **systematic, layered approach** — not guessing. Same instinct as the API debugging question: metrics → traces → logs, never the reverse.
-
----
-
-### What "Missing" Means (Clarify First)
-
-Before investigating, nail down what "missing" actually means — the answer changes the investigation:
-
-| Signal | What It Means |
-|---|---|
-| Instance no longer sending logs | Agent crashed, network partition, or instance terminated |
-| Instance removed from load balancer | Health check failing, graceful shutdown, or autoscaler terminated it |
-| Instance not responding to SSH | OS-level crash, kernel panic, hardware failure, or security group changed |
-| Instance missing from cloud console | Terminated by autoscaler, spot instance reclaimed, or accidental deletion |
-
----
-
-### Investigation Playbook (Systematic, Layer by Layer)
-
-```
-START: Instance X is missing
+Is this happening right now in production?
         │
-        ▼
-Step 1: CHECK THE CLOUD CONSOLE FIRST
+        ├── YES → Triage first
+        │         │
+        │         ├── Can you restart / scale out? → do it NOW, debug later
+        │         ├── Can you roll back a recent deploy? → do it
+        │         ├── Can you shed load (rate limit, queue)? → do it
+        │         └── THEN debug with the incident timeline
         │
-        ├── Is the instance still listed?
-        │     No → Was it terminated? Check autoscaling activity log
-        │           Was it a spot instance? Check spot interruption notice
-        │           Was it manually terminated? Check CloudTrail
-        │
-        ├── Is it listed but in a bad state?
-        │     "stopped" → check stop reason
-        │     "terminated" → check termination reason + who/what did it
-        │
-        ▼
-Step 2: CHECK THE LOG COLLECTION SYSTEM
-        │
-        ├── When did last_seen_at stop updating?
-        │     (query: SELECT last_seen_at FROM servers WHERE id = :id)
-        │
-        ├── What were the last log lines before it disappeared?
-        │     (query: GET /logs/search?server_id=X&severity=ERROR&limit=50)
-        │     Look for: OOM killed, segfault, unhandled exception, disk full
-        │
-        ├── Was there a spike in ERROR/FATAL logs just before?
-        │     Signals: application crash, dependency failure
-        │
-        ▼
-Step 3: CHECK INFRASTRUCTURE METRICS (CloudWatch / Prometheus)
-        │
-        ├── CPU — was it pegged at 100%? → runaway process, fork bomb
-        ├── Memory — did it hit the limit? → OOM killer terminated a process
-        ├── Disk — was it full? → writes failing, agent couldn't buffer logs
-        ├── Network — did traffic drop to zero? → NIC failure, security group change
-        ├── Status checks — did AWS EC2 status checks fail? → hardware issue
-        │
-        ▼
-Step 4: CHECK THE LOAD BALANCER
-        │
-        ├── Was this instance deregistered from the target group?
-        ├── Was health check failing? What endpoint? What response code?
-        ├── When was the last successful health check?
-        │
-        ▼
-Step 5: CHECK AUTOSCALING ACTIVITY
-        │
-        ├── Did the autoscaler terminate it intentionally?
-        │     (scale-in event, scheduled action, reactive scale-down)
-        ├── Did it terminate due to a failed health check?
-        ├── Was it replaced by a new instance?
-        │
-        ▼
-Step 6: CHECK CLOUDTRAIL / AUDIT LOGS
-        │
-        ├── Who or what called TerminateInstances?
-        ├── Was there an IAM role or automation that triggered it?
-        ├── Was there a deployment pipeline that cycled instances?
-        │
-        ▼
-CONCLUSION: Root cause falls into one of:
-  A. Intentional termination (autoscaler, deployment, manual)
-  B. Application crash (OOM, unhandled exception, disk full)
-  C. Infrastructure failure (hardware, network, hypervisor)
-  D. External action (security group change, spot reclaim, accidental delete)
+        └── NO → Reproduced in staging / load test → full debug mode
+```
+
+> **This is the answer that separates senior from junior.** A junior engineer starts debugging. A senior engineer asks "are users impacted right now?" and restores service before investigating cause.
+
+---
+
+## Step 1: Understand the System — Draw the Request Path
+
+Before any tool, draw what a single API request touches. You cannot find a bottleneck in a system you haven't mapped.
+
+```
+Client
+  │
+  ▼
+Load Balancer / API Gateway
+  │
+  ▼
+API Server (your service)
+  │
+  ├──► Cache (Redis / Memcached)        ← miss? → hits DB
+  │
+  ├──► Database (PostgreSQL / MySQL)    ← slow query? lock contention?
+  │
+  ├──► Downstream Service A             ← slow? timing out?
+  │      │
+  │      └──► Its own DB / cache
+  │
+  └──► Message Queue (async path)       ← backlog building?
+```
+
+Every hop in this path is a candidate for the slowness. Your investigation is systematically ruling each one out.
+
+**Ask the interviewer (or yourself):**
+- Is this all endpoints slow, or one specific endpoint?
+- Is it slow for all users or a subset?
+- Did it start suddenly or degrade gradually?
+- Was there a recent deploy, config change, or traffic spike?
+
+These answers cut the search space in half before you look at a single metric.
+
+---
+
+## Step 2: Metrics — Build the Timeline
+
+**Golden rule: never hypothesize before you have a timeline.**
+
+The timeline answers: *what changed, when did it change, and what else changed at the same time?*
+
+### The Four Golden Signals (Always Start Here)
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  Signal         What to Look At          What It Tells You      │
+├─────────────────────────────────────────────────────────────────┤
+│  Latency        p50, p95, p99            p99 spiking but p50     │
+│                 (NOT average)            fine = tail latency,    │
+│                                          not uniform slowness    │
+│                                                                   │
+│  Traffic        Requests per second      Did load increase?      │
+│                 by endpoint              Which endpoint?         │
+│                                                                   │
+│  Error Rate     4xx rate, 5xx rate       Errors or just slow?    │
+│                 by endpoint + code       What type of failure?   │
+│                                                                   │
+│  Saturation     CPU, memory, threads,    What is running out?    │
+│                 DB connections, queue    This is the bottleneck  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+> **Never use average latency.** An average of 50ms hides the reality that 1% of requests are taking 30 seconds. Always look at p95 and p99 — those are the requests your users are actually experiencing as broken.
+
+### Resource Metrics Checklist
+
+Pull all of these at the moment slowness started:
+
+```
+COMPUTE
+  ├── CPU utilization (per core, not just average)
+  ├── Memory utilization + swap usage
+  ├── JVM heap used / max (if Java/Go with GC)
+  ├── GC pause duration + frequency
+  └── Process count / file descriptors
+
+THREADS
+  ├── Thread pool: active threads
+  ├── Thread pool: queued requests
+  ├── Thread pool: rejected requests        ← this is the smoking gun
+  └── Thread pool: max size
+
+DATABASE
+  ├── Connection pool: active connections
+  ├── Connection pool: idle connections
+  ├── Connection pool: wait time            ← requests waiting for a connection
+  ├── Query latency p50/p95/p99
+  ├── Active queries count
+  ├── Lock wait time
+  └── Replication lag (if reads hit replica)
+
+NETWORK
+  ├── Bytes in/out
+  ├── TCP connection count
+  ├── Connection errors
+  └── Retries
+
+DOWNSTREAM DEPENDENCIES
+  ├── Latency to each dependency (p50/p95/p99)
+  ├── Error rate from each dependency
+  └── Circuit breaker state (CLOSED / OPEN / HALF-OPEN)
+```
+
+### What the Metrics Pattern Tells You
+
+```
+Pattern                                 → Likely Cause
+────────────────────────────────────────────────────────────
+p99 latency high, p50 fine              → Tail latency issue
+                                          (GC pause, lock contention,
+                                           slow DB query on some data)
+
+ALL latency climbing gradually          → Resource leak
+                                          (memory leak, connection leak,
+                                           growing queue backlog)
+
+Latency spike at exact deploy time      → Code regression
+                                          (new slow query, removed cache,
+                                           sync call added to hot path)
+
+Latency spike correlates with traffic   → Capacity issue
+                                          (not enough threads/instances
+                                           for the load)
+
+One endpoint slow, others fine          → Endpoint-specific bug
+                                          (bad query for that data,
+                                           missing index, N+1 query)
+
+All endpoints slow at same time         → Shared resource exhausted
+                                          (DB connection pool, thread pool,
+                                           shared downstream dependency)
+
+Downstream latency spiked first         → Cascading failure
+                                          (their problem became your problem)
 ```
 
 ---
 
-### What the Log Collection System Enables Here
+## Step 3: Distributed Traces — Find Exactly Where Time Goes
 
-This is the payoff of the design in Part 1. Without it:
-- You cannot answer "what were the last log lines?"
-- You cannot answer "when did it go missing?"
-- You cannot answer "was there an error spike before it died?"
+Metrics tell you *something is slow*. Traces tell you *what exactly is slow*.
 
-With it, steps 2 and 3 of the playbook above are answered in seconds via `GET /logs/search` and `GET /servers/{id}`.
+### What a Trace Looks Like
 
-**This is the answer to why the interviewer asks both questions in the same session.** The log collection system IS the tool that makes instance investigation possible.
+A trace captures one request's entire journey through the system, with timing for each component:
+
+```
+Trace: POST /api/checkout  (total: 8,450ms)  ← this is what the user sees
+│
+├── API Gateway                    12ms
+│
+├── Auth middleware                 8ms
+│
+├── CheckoutService handler         3ms
+│
+├── Redis cache lookup              2ms   (miss)
+│
+├── DB query: SELECT orders         4,200ms   ◄── HERE. This is the problem.
+│   WHERE user_id = 12345
+│   AND status = 'active'
+│
+├── PaymentService HTTP call        3,800ms   ◄── AND HERE.
+│   POST /payment/validate
+│
+└── Response serialization          5ms
+
+Healthy trace (same endpoint, call #5):
+├── DB query: SELECT orders         12ms
+└── PaymentService HTTP call        45ms
+```
+
+Now you know:
+- The DB query is 350x slower than normal
+- The payment service call is 84x slower than normal
+
+Without the trace you'd be guessing. With the trace you have two confirmed suspects.
+
+### What to Look For in Traces
+
+```
+Long span on DB call        → slow query, lock wait, missing index, pool wait
+Long span on HTTP call      → downstream service degraded, network issue
+Long gap between spans      → thread context switching, queue wait, GC pause
+Span missing entirely       → circuit breaker open, timeout before call made
+Many identical short spans  → N+1 query (loop calling DB once per item)
+```
+
+### N+1 Query — The Silent Killer
+
+This is one of the most common causes of API slowness that looks fine at low load:
+
+```
+BAD (N+1):
+  GET /orders → fetch 100 orders (1 query)
+             → for each order, fetch user details (100 queries)
+             → TOTAL: 101 queries
+             
+  At 1 RPS: 101 queries × 5ms each = 505ms (acceptable)
+  At 100 RPS: 10,100 queries/second → DB overwhelmed → latency explodes
+
+GOOD (1 query):
+  SELECT orders.*, users.*
+  FROM orders
+  JOIN users ON orders.user_id = users.id
+  WHERE orders.status = 'active'
+  → 1 query regardless of result size
+```
+
+In the trace, N+1 looks like this:
+```
+DB: SELECT * FROM orders          5ms
+DB: SELECT * FROM users WHERE id=1  5ms
+DB: SELECT * FROM users WHERE id=2  5ms
+DB: SELECT * FROM users WHERE id=3  5ms
+... × 100
+```
+100 nearly identical spans in a loop = N+1. Fix with a JOIN or batch `WHERE id IN (...)`.
 
 ---
 
-## Part 3: After 200 API Calls You Get 5xx/4xx Errors — Debug It
+## Step 4: Logs — Read What the System Already Told You
 
-> This is a **stateful failure** — the system works fine initially then degrades. That pattern is a strong signal. A senior engineer immediately asks: "what changed between call 1 and call 200?" The answer is almost always resource exhaustion.
+After metrics give you the timeline and traces give you the slow component, logs give you the exact failure message.
+
+Search logs at the moment slowness started. What you're looking for:
+
+```
+ERROR MESSAGE                                        WHAT IT MEANS
+──────────────────────────────────────────────────────────────────
+"Timeout waiting for connection from pool"     → DB/HTTP connection pool full
+"too many connections"                         → DB max_connections hit
+"Connection refused"                           → downstream service down
+"Circuit breaker OPEN for payment-service"     → CB tripped, fast-failing
+"java.lang.OutOfMemoryError: Java heap space"  → OOM, likely GC thrash before
+"GC overhead limit exceeded"                   → JVM spending >98% time in GC
+"Thread pool is full, rejecting request"       → thread saturation
+"Slow query: 4523ms"                           → DB query exceeded threshold
+"Lock wait timeout exceeded"                   → DB lock contention
+"429 Too Many Requests from stripe.com"        → external rate limit hit
+"Read timeout after 30000ms"                   → downstream took too long
+```
+
+> **Log search order:** Start broad (all ERROR/FATAL for the service) → narrow by time (2 minutes around when slowness started) → narrow by component (the one traces pointed at).
 
 ---
 
-### The Pattern Recognition First
+## Step 5: Deep Dive — The Six Root Causes
 
-The fact that it fails *after* 200 calls and not immediately tells you a lot:
-
-```
-Fails immediately → config wrong, dependency unreachable, code bug
-Fails after N calls → resource exhaustion, leak, rate limit, connection pool
-Fails after N *time* → TTL expiry, token expiry, cache eviction
-Fails under load only → thread pool saturation, DB connection pool, cascade
-```
-
-"After 200 API calls" → **resource exhaustion** is the most likely class of problem. Your investigation is looking for what runs out.
+Now you've confirmed a suspect via traces + logs. Here is a complete investigation + fix for each root cause.
 
 ---
 
-### Systematic Debug Playbook (Observability First, Always)
+### Root Cause 1: Thread Pool Saturation
+
+**The mechanism:**
 
 ```
-NEVER start by looking at code.
-ALWAYS start by looking at signals.
+Requests arrive → each grabs a thread → thread makes a DB call (blocking)
+Thread is held while waiting for DB response
+New requests arrive → grab more threads
+DB is slow → all threads are waiting
+Thread pool full → new requests queue
+Queue full → requests rejected → 503 / timeout
 ```
 
-#### Step 1: Classify the Error (4xx vs 5xx)
-
-This is the first fork in the road:
-
-| Error Class | What It Means | Where to Look First |
-|---|---|---|
-| **4xx (client errors)** | The server is up; the request is wrong | Rate limiting, auth token expiry, malformed request after state change |
-| **5xx (server errors)** | The server is failing | Thread pool, DB, downstream dependency, OOM |
-| **Mix of both** | Different failure modes for different request types | Investigate separately by endpoint |
+**The shape of this problem:**
 
 ```
-→ If 429 Too Many Requests: you're being rate limited
-→ If 401/403: token expired or auth state changed after N calls
-→ If 500: server-side failure — look at server metrics + logs
-→ If 502/503/504: upstream timeout or gateway failure — look at downstream deps
+Normal load (10 RPS):            High load (100 RPS):
+  10 threads in use               100 threads in use
+  DB latency: 50ms                DB latency: 500ms (pool contention)
+  Threads released quickly        Threads held longer
+  Pool never saturates            Pool saturates → cascade
 ```
-
----
-
-#### Step 2: Metrics First — Establish the Baseline
-
-Before touching code or logs, pull these metrics at the moment errors started:
-
-```
-┌─────────────────────────────────────────────────────────┐
-│  WHAT TO CHECK                    WHAT YOU'RE LOOKING FOR│
-├─────────────────────────────────────────────────────────┤
-│  Request rate (RPS)               Did traffic spike?     │
-│  Error rate (%)                   When exactly did it    │
-│                                   cross the threshold?   │
-│  Latency p50 / p95 / p99          Did latency climb      │
-│                                   before errors started? │
-│  CPU utilization                  Runaway process?       │
-│  Memory utilization               Growing leak?          │
-│  JVM heap (if Java)               GC pressure?           │
-│  Thread pool active/queued        Saturation?            │
-│  DB connection pool active/idle   Pool exhausted?        │
-│  DB query latency                 Slow queries?          │
-│  Downstream service latency       Dependency degraded?   │
-└─────────────────────────────────────────────────────────┘
-```
-
-> **What you're building:** a timeline. "At call 150, latency started climbing. At call 180, thread pool hit 100%. At call 200, requests started failing." That timeline tells you causality.
-
----
-
-#### Step 3: Traces — Find the Slow Path
-
-With distributed tracing (OpenTelemetry / Jaeger / X-Ray), pull a trace from a failed request and compare it to a successful one:
-
-```
-Successful request trace (call #10):
-  API handler          2ms
-  DB query             5ms
-  Cache read           1ms
-  Total:               8ms
-
-Failed request trace (call #210):
-  API handler          2ms
-  DB query             [waiting for connection... 29,998ms]
-  Total:               30,000ms → timeout → 500
-```
-
-The trace tells you **exactly where time is spent**. You don't need to guess which component is the problem — the trace shows you.
-
----
-
-#### Step 4: Logs — Confirm the Root Cause
-
-Now look at logs around the time errors started. With the log collection system from Part 1:
-
-```
-GET /logs/search?service_name=api&severity=ERROR&from=T-5min&to=T+1min
-```
-
-Common patterns you're looking for:
-
-```
-"too many connections" → DB connection pool exhausted
-"connection refused" → downstream service down
-"timeout waiting for connection from pool" → thread pool or DB pool full
-"OutOfMemoryError" → heap exhausted
-"Circuit breaker OPEN" → downstream dependency tripped the breaker
-"rate limit exceeded" → external API rate limit hit
-"Token expired" → auth token not being refreshed
-```
-
----
-
-#### Step 5: The Six Most Common Root Causes (and Fixes)
-
----
-
-##### Root Cause 1: DB Connection Pool Exhausted
-
-**What happens:**
-- App starts fine. After N requests, all DB connections are checked out.
-- New requests wait for a connection. Wait exceeds timeout. → 500.
 
 **How to confirm:**
-```sql
--- PostgreSQL: see active connections
-SELECT count(*), state FROM pg_stat_activity GROUP BY state;
--- If max_connections hit → pool exhausted
+
 ```
-```
-Metric: db.pool.active == db.pool.max → confirmed
+Metric: thread_pool.active == thread_pool.max_size  (pool full)
+Metric: thread_pool.queue_size > 0 and growing
+Metric: thread_pool.rejected_count > 0              (the smoking gun)
+Log:    "Thread pool is full" / "Request rejected from queue"
+Trace:  Long gap BEFORE the first span (waiting for a thread)
 ```
 
-**Fix:**
+**Fix — short term:**
 ```
-Short term: increase pool size (but this is a band-aid)
-Real fix:   find the connection leak — transactions not closed,
-            connections not returned to pool on exception paths
-            Use try-with-resources / connection pool timeouts
+Increase thread pool size temporarily
+  BUT: this is a band-aid — more threads = more memory + more DB connections needed
+  If DB is the bottleneck, more threads just means more threads waiting on DB
+```
+
+**Fix — real:**
+
+```
+Option A: Make I/O non-blocking (reactive / async)
+  Java:   Spring WebFlux + R2DBC (reactive DB driver)
+  Go:     goroutines (already non-blocking by design)
+  Node:   already async; ensure no blocking calls in event loop
+  
+  Effect: One thread handles thousands of concurrent requests
+          Thread is released while waiting for I/O, reused immediately
+          Thread pool size becomes irrelevant
+
+Option B: Reduce I/O latency
+  Faster DB queries → threads released sooner → pool never saturates
+  Add caching → eliminate DB calls entirely for read-heavy paths
+  Fix downstream slowness → threads not held waiting
+
+Option C: Backpressure + queue
+  Don't reject requests — queue them with a bounded queue
+  Requests wait in queue instead of failing immediately
+  Set a queue timeout so requests don't wait forever
 ```
 
 ---
 
-##### Root Cause 2: Thread Pool Saturation
+### Root Cause 2: Database Connection Pool Exhausted
 
-**What happens:**
-- Each request occupies a thread while waiting for slow I/O (DB, HTTP call)
-- After N requests, all threads are occupied waiting
-- New requests queue up. Queue fills. → 503 / timeout
+**The mechanism:**
+
+```
+Connection pool: 20 connections configured
+20 concurrent requests → each checks out one connection
+21st request → waits for a connection to be returned
+If requests are slow (slow queries) → connections held longer
+→ pool wait time climbs → requests queue → timeout → 500
+```
 
 **How to confirm:**
-```
-Metric: thread_pool.active == thread_pool.max
-Metric: thread_pool.queue_size growing
-Log: "Request rejected from queue" or "Thread pool exhausted"
-```
-
-**Fix:**
-```
-Short term: increase thread pool size (again, band-aid)
-Real fix:   switch blocking I/O to async/reactive (WebFlux, async handlers)
-            OR reduce I/O latency (fix the slow downstream call)
-            Use circuit breakers so slow dependencies don't hold threads
-```
-
----
-
-##### Root Cause 3: Memory Leak → OOM → Crash → 5xx
-
-**What happens:**
-- Memory grows slowly with each request (leaked objects, growing caches)
-- After N requests, heap exhausted → GC thrash → OOM → process dies → 502/503
-
-**How to confirm:**
-```
-Metric: jvm.memory.heap.used growing monotonically (never coming down)
-Metric: jvm.gc.pause increasing (GC working harder and harder)
-Log: "java.lang.OutOfMemoryError: Java heap space"
-```
-
-**Fix:**
-```
-Take a heap dump: jmap -dump:format=b,file=heap.hprof <pid>
-Analyze with: Eclipse MAT, JProfiler, VisualVM
-Look for: objects accumulating in static collections,
-          unclosed streams, ThreadLocal values not cleaned up
-```
-
----
-
-##### Root Cause 4: Cascading Failure from Downstream Dependency
-
-**What happens:**
-- A downstream service (DB, external API, cache) becomes slow
-- Your service waits → threads held → pool exhausts → your service fails too
-- You get 5xx even though YOUR code is fine
-
-**How to confirm:**
-```
-Trace: downstream call latency spiked at the same time errors started
-Metric: downstream_service.latency p99 climbing
-Log: "timeout calling payment-service" / "connection refused to cache"
-```
-
-**Fix:**
-```
-Immediate: circuit breaker trips → fast-fail instead of waiting
-           (Resilience4j, Hystrix, or manual implementation)
-           Timeout + retry with exponential backoff on the call
-Real fix:  fix the downstream service
-           Add fallback behavior (cached response, degraded mode)
-```
-
-Circuit breaker state machine:
-```
-CLOSED (normal)
-  → too many failures →
-OPEN (fast-fail all requests, don't call downstream)
-  → after timeout →
-HALF-OPEN (allow one test request)
-  → success → CLOSED
-  → failure → OPEN again
-```
-
----
-
-##### Root Cause 5: Rate Limiting (429) — External or Internal
-
-**What happens:**
-- External API (Stripe, Twilio, etc.) has a rate limit of e.g. 200 calls/minute
-- Your app hits it → 429 from external → your app returns 500 to caller
-
-**How to confirm:**
-```
-Log: "429 Too Many Requests from stripe.com"
-Metric: external_api.response_code{code="429"} non-zero
-```
-
-**Fix:**
-```
-Implement token bucket / leaky bucket rate limiter on your outbound calls
-Queue + batch requests to stay under the limit
-Cache responses where possible (don't call stripe for the same data twice)
-```
-
----
-
-##### Root Cause 6: Auth Token Expiry
-
-**What happens:**
-- App starts with a valid token (OAuth, API key, JWT)
-- Token expires after N minutes / N calls
-- App doesn't refresh → subsequent calls get 401/403
-
-**How to confirm:**
-```
-Error pattern: first N calls succeed, then all fail with 401
-Log: "Token expired" or "401 Unauthorized"
-Time since startup: matches token TTL
-```
-
-**Fix:**
-```
-Implement token refresh before expiry (refresh at 80% of TTL)
-Use a credentials provider that auto-refreshes (AWS SDK does this natively)
-Never hardcode tokens in config — use a secrets manager with rotation
-```
-
----
-
-#### Step 6: EXPLAIN ANALYZE — Database Query Investigation
-
-If the trace pointed at the DB as the slow component:
 
 ```sql
-EXPLAIN ANALYZE
-SELECT * FROM orders
-WHERE user_id = 12345
-AND status = 'pending'
-ORDER BY created_at DESC;
+-- PostgreSQL: see active vs idle connections right now
+SELECT state, count(*)
+FROM pg_stat_activity
+WHERE datname = 'your_db'
+GROUP BY state;
+
+-- state = 'active' → running a query
+-- state = 'idle in transaction' → DANGER: transaction open, connection held
+-- state = 'idle' → connection available
 ```
 
-**What to look for in the output:**
-
 ```
-Seq Scan on orders (rows=1000000)   ← FULL TABLE SCAN — needs an index
-Index Scan using idx_user_id        ← good, using index
-Nested Loop (rows=50000)            ← might be N+1 query problem
-Hash Join (rows=1000)               ← usually fine
-Sort (rows=500000)                  ← expensive if no index on sort column
+Metric: db.pool.connections.active == db.pool.max_size  (pool full)
+Metric: db.pool.connections.wait_time > 0 and climbing
+Log:    "Timeout waiting for connection from pool after Xms"
 ```
 
-**Most common fixes:**
+**Fix:**
+
 ```
-Missing index          → CREATE INDEX CONCURRENTLY idx_orders_user_status
-                         ON orders(user_id, status);
-N+1 query             → Batch with IN clause or JOIN instead of loop
-Missing LIMIT          → Never SELECT * without LIMIT on user-facing queries
-Lock contention        → Check pg_locks; long transactions blocking others
+Immediate: increase pool size
+  (hikari: maximumPoolSize, pg: max_connections aware of this)
+  BUT: DB has its own max_connections limit — you can't increase pool
+  size past what the DB supports
+
+Real fix 1: Find and fix connection leaks
+  Connections not returned to pool on exception paths
+  Transactions opened but not committed/rolled back
+  Use try-with-resources or connection pool leak detection
+  Hikari: leakDetectionThreshold = 2000ms (logs if connection held >2s)
+
+Real fix 2: Fix slow queries so connections are released faster
+  A 5ms query holds connection for 5ms
+  A 5000ms query holds connection for 5000ms
+  At same RPS, pool needs 1000x more connections for slow queries
+
+Real fix 3: PgBouncer (connection pooler in front of Postgres)
+  Postgres has a hard limit on connections (default 100)
+  PgBouncer sits in front, multiplexes thousands of app connections
+  into a smaller number of real Postgres connections
+  Transaction pooling mode: connection returned to pool after each transaction
+```
+
+**The "idle in transaction" trap:**
+
+```sql
+-- Find transactions open for more than 5 minutes (stuck)
+SELECT pid, now() - pg_stat_activity.query_start AS duration, query, state
+FROM pg_stat_activity
+WHERE state = 'idle in transaction'
+AND (now() - pg_stat_activity.query_start) > interval '5 minutes';
+```
+
+These are connections being held by transactions that started but never committed or rolled back — often due to an exception that bypassed the finally block.
+
+---
+
+### Root Cause 3: Slow Database Query
+
+**The mechanism:**
+
+Queries that run fine with 1,000 rows in dev blow up with 10,000,000 rows in production. The query plan the DB chose with a small dataset is wrong for a large one.
+
+**How to confirm:**
+
+```
+Trace: DB span is 3,000ms instead of 3ms
+Log:   "Slow query logged: 3241ms — SELECT * FROM orders WHERE..."
+```
+
+**Investigation: EXPLAIN ANALYZE**
+
+```sql
+EXPLAIN (ANALYZE, BUFFERS, FORMAT TEXT)
+SELECT o.*, u.name, u.email
+FROM orders o
+JOIN users u ON o.user_id = u.id
+WHERE o.status = 'pending'
+AND o.created_at > NOW() - INTERVAL '7 days'
+ORDER BY o.created_at DESC
+LIMIT 100;
+```
+
+**Reading the output — what to look for:**
+
+```
+Seq Scan on orders  (cost=0.00..485234.00 rows=1000000)
+  ↑ FULL TABLE SCAN — reading every row in the table
+  ↑ This is O(N) where N = total rows
+  ↑ Fine at 1K rows, catastrophic at 10M rows
+
+Index Scan using idx_orders_status on orders
+  ↑ Using an index — O(log N) lookup
+  ↑ This is what you want
+
+Nested Loop  (rows=50000 width=200)
+  ↑ For each row in outer, scan inner
+  ↑ Can be O(N²) if inner has no index
+
+Hash Join  (rows=1000)
+  ↑ Usually efficient — build hash table from smaller side
+  ↑ But can spill to disk if rows estimate is wrong
+
+Sort  (cost=... rows=1000000)
+  ↑ Sorting 1M rows in memory is expensive
+  ↑ If it says "external sort" → spilling to disk → very slow
+  ↑ Fix: index on the sort column, or LIMIT before sort
+
+actual rows=1523456  vs  rows=1000  (in the estimate)
+  ↑ HUGE MISMATCH — planner chose wrong plan because statistics are stale
+  ↑ Fix: ANALYZE orders; (refresh table statistics)
+```
+
+**The most common fixes:**
+
+```sql
+-- Missing index on WHERE clause columns
+CREATE INDEX CONCURRENTLY idx_orders_status_created
+ON orders(status, created_at DESC)
+WHERE status = 'pending';   -- partial index: only indexes pending rows
+                            -- much smaller, much faster
+
+-- Missing index on JOIN column
+CREATE INDEX CONCURRENTLY idx_orders_user_id ON orders(user_id);
+
+-- Stale statistics causing wrong query plan
+ANALYZE orders;
+ANALYZE users;
+
+-- Query returning too many columns
+SELECT o.id, o.total, u.name   -- only what you need
+FROM orders o JOIN users u ...  -- NOT SELECT *
+
+-- Missing LIMIT causing full result set materialization
+SELECT ... FROM orders LIMIT 100 OFFSET 0;  -- paginate, never load all rows
+```
+
+**Lock contention — a separate DB problem:**
+
+```sql
+-- Find blocking locks
+SELECT
+  blocked.pid,
+  blocked.query AS blocked_query,
+  blocking.pid AS blocking_pid,
+  blocking.query AS blocking_query
+FROM pg_stat_activity AS blocked
+JOIN pg_stat_activity AS blocking
+  ON blocking.pid = ANY(pg_blocking_pids(blocked.pid))
+WHERE cardinality(pg_blocking_pids(blocked.pid)) > 0;
+```
+
+Long-running transactions (e.g. a batch job) can hold row-level locks that block your API queries. The API query waits → thread is held → pool exhausts → 503.
+
+**Fix:** Kill the blocking query (`SELECT pg_terminate_backend(pid)`), then fix the root cause — batch jobs should use smaller transactions, or run during off-peak with `NOWAIT` / `SKIP LOCKED`.
+
+---
+
+### Root Cause 4: Memory Leak → GC Thrash → OOM
+
+**The mechanism:**
+
+```
+Request 1  → allocates objects → response sent → GC collects → memory freed
+Request 100 → some objects escape (not collected — references held)
+Request 1000 → more objects escaped → heap slowly filling
+Request 10000 → heap 90% full → GC runs constantly
+                JVM spending 80% of time in GC, 20% doing work
+                Latency climbs because GC stop-the-world pauses
+                Eventually: OutOfMemoryError → process dies → 502
+```
+
+**The signature of this problem:**
+
+```
+Metric: jvm.memory.heap.used — grows monotonically, never stabilizes
+Metric: jvm.gc.pause.duration — increasing over time
+Metric: jvm.gc.collections_per_minute — increasing over time
+Metric: process.cpu — high even with moderate load (GC is CPU-heavy)
+Log:    "java.lang.OutOfMemoryError: Java heap space"
+        (or: "GC overhead limit exceeded")
+```
+
+**GC pause pattern in latency:**
+
+```
+Normal:          ──────────────────────── p99: 20ms
+After 1hr leak:  ─────────────┬──────────────────────┬─── p99: 2000ms
+                              │                      │
+                           GC pause              GC pause
+                           (stop-the-world)
+```
+
+**Investigation: Heap Dump**
+
+```bash
+# Capture heap dump while the process is alive (before OOM)
+jmap -dump:format=b,file=/tmp/heap-$(date +%s).hprof <pid>
+
+# Or configure JVM to auto-dump on OOM:
+-XX:+HeapDumpOnOutOfMemoryError
+-XX:HeapDumpPath=/tmp/heapdumps/
+
+# Analyze with Eclipse MAT or VisualVM
+# Look for: "Leak Suspects" report
+# Look for: objects with many instances that shouldn't accumulate
+```
+
+**Common memory leak patterns:**
+
+```
+Static collections that grow unboundedly:
+  private static Map<String, Object> cache = new HashMap<>();
+  // cache.put() called on every request, never evicted
+  // Fix: use Guava Cache / Caffeine with size/time eviction
+
+ThreadLocal values not cleaned up:
+  ThreadLocal<Context> ctx = new ThreadLocal<>();
+  // Thread pool reuses threads — old ThreadLocal value survives
+  // Fix: always call ctx.remove() in finally block
+
+Event listeners never unregistered:
+  eventBus.subscribe(this);
+  // Object subscribed but never unsubscribed
+  // Object cannot be GC'd because eventBus holds a reference
+  // Fix: unsubscribe in cleanup/destroy
+
+Unclosed streams / connections:
+  InputStream is = url.openStream();
+  // Exception thrown before is.close()
+  // Fix: try-with-resources
 ```
 
 ---
 
-### The Full Debug Decision Tree
+### Root Cause 5: Cascading Failure from Downstream Dependency
+
+**The mechanism:**
 
 ```
-5xx/4xx errors start after N calls
+Your API calls Payment Service for every checkout request
+Payment Service becomes slow (their DB is overloaded)
+Your threads now wait 30s for Payment Service instead of 100ms
+Your thread pool fills up waiting on Payment Service
+Your API is now "slow" — but YOUR code is fine
+You are a victim of their problem
+```
+
+**How cascades propagate:**
+
+```
+Payment Service: 100ms → 30,000ms
         │
         ▼
-Is it 4xx or 5xx?
+Your threads: held for 30s instead of 100ms
+→ Need 300x more threads to handle same RPS
+→ Thread pool exhausts in seconds
+→ Your API returns 503
         │
-        ├── 429 → Rate limited → implement outbound rate limiter
-        ├── 401/403 → Token expired → implement token refresh
-        ├── 400 → Bad request after state change → check input validation
+        ▼
+Caller of your API:
+→ Your API is now slow for them
+→ THEIR thread pool exhausts
+→ THEIR API returns 503
         │
-        └── 5xx → Server failure
-                    │
-                    ▼
-            Did latency climb before errors?
-                    │
-                    ├── Yes → Resource exhaustion
-                    │           │
-                    │           ├── Thread pool full? → async I/O or reduce I/O latency
-                    │           ├── DB pool full?     → fix connection leak
-                    │           ├── Memory growing?   → heap dump → fix leak
-                    │           └── Downstream slow?  → circuit breaker + fix dep
-                    │
-                    └── No → Sudden failure
-                                │
-                                ├── Instance crashed?  → check logs, OOM, segfault
-                                ├── Deployment rolled? → check deploy timeline
-                                └── Config changed?    → check audit trail
+        ▼
+(cascade continues up the call chain)
+```
+
+**How to confirm:**
+
+```
+Trace: HTTP span to payment-service is 30,000ms (was 100ms)
+Metric: payment_service.latency.p99 → 30,000ms (was 100ms)
+Metric: payment_service.error_rate → spiking
+Log:    "Read timeout after 30000ms calling payment-service"
+```
+
+**Fix: Circuit Breaker**
+
+The circuit breaker stops you from holding threads waiting on a broken dependency.
+
+```
+State machine:
+
+  CLOSED (normal operation)
+    │  count failures over sliding window
+    │  if failure_rate > threshold (e.g. 50%)
+    ▼
+  OPEN (fast-fail)
+    │  all calls immediately return error (no network call)
+    │  threads not held — pool stays available
+    │  after wait_duration (e.g. 30s)
+    ▼
+  HALF-OPEN (probe)
+    │  allow 1 test call through
+    │  success → CLOSED
+    │  failure → OPEN again
+```
+
+```java
+// Resilience4j example
+CircuitBreaker cb = CircuitBreaker.ofDefaults("payment-service");
+
+String result = cb.executeSupplier(() ->
+    paymentClient.validate(request)  // if CB OPEN → throws exception immediately
+);
+```
+
+**Without circuit breaker:** Payment Service slow → your threads held → your pool exhausts → your API slow → callers affected.
+
+**With circuit breaker:** Payment Service slow → CB trips OPEN → your API fast-fails with "payment unavailable" → threads not held → your API stays fast for other endpoints.
+
+**Additional defenses:**
+
+```
+Timeout:              always set a timeout on outbound calls
+                      default: no timeout = thread held indefinitely
+                      
+Retry with backoff:   retry on transient failures
+                      exponential backoff + jitter to avoid thundering herd
+                      BUT: don't retry on timeout — you'll amplify the problem
+                      
+Bulkhead:             separate thread pool per downstream dependency
+                      payment service slowness can't exhaust the main pool
+                      
+Fallback:             if payment fails, return cached result / degrade gracefully
+                      "payment service temporarily unavailable, try again in 30s"
 ```
 
 ---
 
-## How to Present This in a System Design Interview
+### Root Cause 6: Tail Latency — p99 Slow, p50 Fine
 
-When the interviewer asks ANY of these three questions, use this opening:
+**The mechanism:**
 
-> *"Before I jump into the design / before I start debugging — I want to establish what observability we have, because everything else flows from that. The three things I always want are: metrics (what's happening in aggregate), distributed traces (what's happening per request), and logs (what did the system say). Let me design the system that provides those first, then use that foundation to answer the specific question."*
+p99 slow but p50 fine means: 99% of requests are fast, 1% are very slow. This is often:
 
-That framing alone signals principal-level thinking. You're not reacting to symptoms — you're establishing the foundation that makes the symptoms interpretable.
+- **GC stop-the-world pauses** — 99% of requests finish between pauses, 1% unlucky enough to hit a pause
+- **Lock contention** — 99% of requests don't hit a hot lock, 1% do and wait
+- **Hot data / cold data** — 99% of requests hit cached data, 1% hit uncached cold rows triggering a full DB read
+- **Noisy neighbor** — other processes on the same machine occasionally steal CPU
+
+**How to confirm:**
+
+```
+Metric: p50 latency stable (20ms)
+Metric: p99 latency spiking (2000ms)
+→ This rules out "everything is slow" — only some requests are slow
+
+Metric: GC pause duration → correlates with p99 spikes?
+Metric: Lock wait time → correlates with p99?
+Metric: Cache hit rate → dropped? → cold requests going to DB
+```
+
+**Fixes per cause:**
+
+```
+GC pauses:
+  → Switch to low-pause GC: G1GC (Java 9+), ZGC (Java 15+), Shenandoah
+  → Reduce allocation rate (object pooling, reduce temp object creation)
+  → Increase heap size to reduce GC frequency
+  -XX:+UseZGC -Xmx8g
+
+Lock contention:
+  → Identify hot lock: Java: jstack, async-profiler
+  → Replace synchronized with ReadWriteLock (multiple readers, one writer)
+  → Replace locks with lock-free data structures (ConcurrentHashMap, AtomicLong)
+  → Shard the data to reduce contention
+
+Cache cold start:
+  → Pre-warm cache on startup
+  → Implement cache stampede protection (probabilistic early expiration)
+  → For new deploys: warm cache before shifting traffic
+```
 
 ---
 
-## Key Design Decisions Summary
+## Step 6: Fix, Verify, and Confirm
 
-| Decision | Choice | Rationale |
-|---|---|---|
-| Log delivery model | Agent batches every 1–5s | Balances latency vs. overhead; one HTTP call per N lines not per line |
-| Durability layer | Kafka (not Elasticsearch) | ES is queryable but not durable; Kafka absorbs crashes and replays |
-| Heartbeat mechanism | Piggybacked on log delivery | No separate heartbeat endpoint; `last_seen_at` updated per batch |
-| Query layer | Elasticsearch | Inverted index for full-text search; geospatial + time-range native |
-| Cold storage | S3 + Parquet | Dirt cheap; queryable with Athena; Glacier for long-term archive |
-| Alert engine | Separate consumer group on Kafka | Decoupled from indexing; can alert even if ES is down |
-| Instance detection | `last_seen_at` threshold query | Simple, reliable, no separate ping mechanism needed |
-| API error debugging order | Metrics → Traces → Logs | Never guess; establish the timeline first |
-| DB debugging | EXPLAIN ANALYZE | Ground truth for query plan; always run before adding indexes |
-| Cascading failure defense | Circuit breaker | Fast-fail prevents thread pool exhaustion from slow dependencies |
+After identifying the root cause:
+
+```
+1. Make ONE change at a time
+   (if you change three things, you don't know which one fixed it)
+
+2. Measure after each change
+   Compare p50/p95/p99 before and after
+   Compare error rate before and after
+
+3. Load test before promoting to production
+   Reproduce the load that caused the problem
+   Confirm it no longer reproduces
+
+4. Confirm in production
+   Monitor for 30 minutes after deploy
+   Watch the same metrics that showed the problem
+```
 
 ---
 
-## Interview Tips
+## Step 7: Prevent Recurrence
 
-| Tip | Detail |
+**Alerting:**
+
+```
+Alert on: p99 latency > 500ms for 3 consecutive minutes
+Alert on: error rate > 1% for 2 consecutive minutes
+Alert on: thread pool rejected count > 0
+Alert on: DB connection pool wait time > 100ms
+Alert on: heap usage > 80%
+Alert on: circuit breaker state = OPEN
+```
+
+**Load testing:**
+
+```
+Run load tests in staging before every major deploy
+Gradually ramp load until you find the breaking point
+Know your system's capacity before production finds it
+Tools: k6, Gatling, Locust, wrk
+```
+
+**Capacity planning:**
+
+```
+Know these numbers for your system:
+  Max sustainable RPS before latency climbs
+  Memory per request × max concurrent requests = minimum heap needed
+  DB connections needed at peak load
+  Thread pool size needed at peak load
+
+Review these after every major feature that changes the request path
+```
+
+---
+
+## The Full Decision Tree
+
+```
+API is slow under load
+        │
+        ▼
+Step 0: Are users impacted NOW?
+        YES → restore service first (scale out / roll back)
+        NO  → investigate safely
+        │
+        ▼
+Step 1: Is it ALL endpoints or ONE endpoint?
+        ONE  → endpoint-specific bug (bad query, missing index, N+1)
+        ALL  → shared resource exhausted (thread pool, DB pool, memory)
+        │
+        ▼
+Step 2: Build the timeline from metrics
+        When did latency start climbing?
+        What else changed at that time? (deploy, traffic spike, config)
+        │
+        ├── Correlates with deploy → code regression
+        ├── Correlates with traffic spike → capacity issue
+        └── Gradual climb over hours → leak (memory, connection)
+        │
+        ▼
+Step 3: Pull a trace from a slow request
+        Which span is the slow one?
+        │
+        ├── DB span slow → go to Step 5A (DB investigation)
+        ├── HTTP span slow → go to Step 5B (downstream / circuit breaker)
+        ├── Gap before first span → thread pool waiting
+        └── Everything slow uniformly → GC or CPU starvation
+        │
+        ▼
+Step 4: Read logs around the start time
+        Confirm the error message matches the hypothesis
+        │
+        ▼
+Step 5: Deep dive on the confirmed suspect
+        Thread pool → async I/O or reduce I/O latency
+        DB pool → fix connection leak, add PgBouncer
+        Slow query → EXPLAIN ANALYZE → add index
+        Memory → heap dump → fix leak
+        Downstream → circuit breaker + timeout + fallback
+        GC → low-pause collector, reduce allocation
+        │
+        ▼
+Step 6: Fix one thing, measure, confirm
+        │
+        ▼
+Step 7: Add alerts, run load tests, update capacity plan
+```
+
+---
+
+## Key Principles (What Separates Principal from Mid-Level)
+
+| Mid-Level Approach | Principal Approach |
 |---|---|
-| **Observability first, always** | For any debugging question, start with "what signals do we have?" before proposing a fix |
-| **The error pattern tells you the class** | Fails immediately = config/code. Fails after N calls = exhaustion. Fails under load only = concurrency. |
-| **4xx vs 5xx is the first fork** | 4xx means the server is healthy but the request is wrong. 5xx means the server is failing. Different investigations. |
-| **Kafka is not a queue** | Clarify: Kafka is an event log with retention and replay. SQS is a queue. Use Kafka where fan-out or replay matters; SQS where competing consumers is enough. |
-| **Heartbeat = log delivery** | Don't design a separate heartbeat mechanism. Piggyback on log delivery — if we're getting logs, the instance is alive. |
-| **Circuit breaker is the cascade answer** | Whenever asked "what if a downstream is slow?" — circuit breaker is the answer. Know the three states: CLOSED, OPEN, HALF-OPEN. |
-| **EXPLAIN ANALYZE before any index** | Never add an index by instinct. Run EXPLAIN ANALYZE, read the plan, confirm the index helps. |
-| **Math with purpose** | 10,000 servers × 1,000 lines/sec × 200 bytes/line = 2 GB/sec. Do this math only to justify Kafka partitioning and multi-shard Elasticsearch — not as a warmup exercise. |
-| **Mention ILM (Index Lifecycle Management)** | Shows you've operated Elasticsearch in production. Hot → warm → cold → delete, automated. |
+| "Let me add logging and see what happens" | "Let me pull the trace for a failed request first" |
+| Looks at average latency | Looks at p99 latency — average hides the problem |
+| Increases thread pool size as the fix | Understands thread pool increase is a band-aid; fixes I/O |
+| Restarts the service | Asks "why did it need restarting?" |
+| Adds an index based on intuition | Runs EXPLAIN ANALYZE first, then adds the index the plan tells you to |
+| Fixes the symptom | Finds the cause and fixes that |
+| Works alone silently | Communicates status to stakeholders during an incident |
+| Fixes this incident | Adds alerts and load tests so the next one is caught earlier |
 
 ---
 
@@ -852,34 +901,24 @@ That framing alone signals principal-level thinking. You're not reacting to symp
 
 | Term | Definition |
 |---|---|
-| **Alert Engine** | Service that evaluates alert rules against the log stream and fires notifications when thresholds are crossed |
-| **At-Least-Once Delivery** | Messaging guarantee: a message is delivered one or more times; idempotent consumers required |
-| **Circuit Breaker** | Pattern that fast-fails calls to a degraded dependency, preventing thread pool exhaustion from cascading |
-| **CloudTrail** | AWS audit log of all API calls made in an account; used to determine who terminated an instance |
-| **Cold Storage** | Cheap, slow storage tier (S3, Glacier) for logs older than 30–90 days |
-| **Connection Pool** | Pre-allocated set of reusable DB connections; exhaustion causes requests to wait and eventually time out |
-| **Consumer Group (Kafka)** | A named group of consumers sharing a topic; each partition goes to one member; multiple groups = fan-out |
-| **EXPLAIN ANALYZE** | PostgreSQL command that executes a query and shows the actual query plan and timing per step |
-| **Elasticsearch** | Search-optimized store with inverted indexes; used here for full-text log search and filtering |
-| **Fan-out** | One message being consumed by multiple independent consumer groups (e.g. Indexer + Alert Engine both read logs) |
-| **Heap Dump** | Snapshot of JVM heap memory; analyzed to find memory leaks by identifying accumulating object types |
-| **Hot Storage** | Fast, expensive storage tier (Elasticsearch on SSD) for recent logs actively queried by operators |
-| **ILM (Index Lifecycle Management)** | Elasticsearch feature that automatically transitions indices through hot → warm → cold → delete phases |
-| **Instance Monitor** | Background service that detects missing servers by querying `last_seen_at` against a staleness threshold |
-| **Inverted Index** | Data structure mapping terms to documents containing them; foundation of Elasticsearch full-text search |
-| **Kafka** | Distributed event log; durable, replayable, supports multiple consumer groups; used here as the ingestion buffer |
-| **last_seen_at** | Timestamp updated on every log batch received; the heartbeat signal for instance liveness detection |
-| **Log Agent** | Sidecar process on each server that tails log files, buffers, and ships batches to the Collector |
-| **Memory Leak** | Objects accumulating in heap that are never garbage collected; leads to OOM over time |
-| **N+1 Query** | Anti-pattern where code issues one query per item in a list instead of one batched query |
-| **OOM (Out of Memory)** | Condition where a process exceeds its memory limit; JVM throws OutOfMemoryError; Linux OOM killer terminates the process |
-| **OpenTelemetry** | Vendor-neutral standard for distributed tracing, metrics, and logs; instruments services end-to-end |
-| **Parquet** | Columnar file format used in S3 cold storage; efficient for analytical queries with Athena/Spark |
-| **Rate Limiting** | Throttling outbound or inbound calls to stay within an API provider's limits |
-| **Seq Scan** | PostgreSQL full table scan; appears in EXPLAIN output when no index is used; often indicates a missing index |
-| **Sidecar** | A helper process running alongside the main application process on the same host |
-| **Spot Instance** | AWS EC2 instance available at discount but subject to reclamation with 2-minute notice |
-| **Thread Pool Saturation** | Condition where all worker threads are occupied (usually waiting on I/O); new requests queue then fail |
-| **Token Bucket** | Rate limiting algorithm that allows bursts up to a capacity, then enforces a steady refill rate |
-| **Trace** | End-to-end record of a single request across all services and components; shows exactly where time is spent |
-| **Warm Storage** | Medium-cost storage tier (Elasticsearch on HDD) for logs 7–30 days old; slower than hot but cheaper |
+| **p50 / p95 / p99** | Percentile latency — p99 means 99% of requests were faster than this value. Always use percentiles, never averages. |
+| **Golden Signals** | The four fundamental metrics for any service: latency, traffic, errors, saturation |
+| **Thread Pool** | A fixed set of worker threads that handle incoming requests; saturation causes requests to queue then fail |
+| **Connection Pool** | Pre-allocated set of DB connections reused across requests; exhaustion causes requests to wait then timeout |
+| **EXPLAIN ANALYZE** | PostgreSQL command that executes a query and shows the actual plan, row counts, and timing per step |
+| **Seq Scan** | Full table scan in PostgreSQL; appears when no index is available; becomes catastrophically slow at scale |
+| **N+1 Query** | Anti-pattern: one query per item in a loop instead of one batch query; catastrophic under load |
+| **Circuit Breaker** | Pattern that fast-fails calls to a degraded dependency; has three states: CLOSED, OPEN, HALF-OPEN |
+| **Cascading Failure** | A downstream dependency's slowness propagates upward, causing independent services to fail |
+| **Bulkhead** | Pattern that isolates thread pools per dependency, preventing one slow dependency from exhausting all threads |
+| **GC Pause** | Stop-the-world garbage collection event; all application threads paused; causes p99 latency spikes |
+| **Heap Dump** | Snapshot of JVM heap; analyzed to identify leaked objects and growing collections |
+| **Tail Latency** | High latency at high percentiles (p99, p99.9) while low percentiles remain fast; indicates intermittent issues |
+| **Distributed Trace** | End-to-end record of one request through all services and components with per-span timing |
+| **Lock Contention** | Multiple threads competing for the same lock; causes some threads to wait while one proceeds |
+| **PgBouncer** | Connection pooler for PostgreSQL; multiplexes many application connections into fewer real DB connections |
+| **Thundering Herd** | Many clients retry simultaneously after a failure, causing a traffic spike that re-triggers the failure |
+| **Backpressure** | Signaling to upstream systems to slow down when a downstream component is overwhelmed |
+| **Idempotency** | Property where repeating an operation produces the same result; important for safe retries |
+| **ILM (Index Lifecycle Management)** | Elasticsearch policy that automatically moves indices through hot → warm → cold → delete phases |
+| **Reactive / Async I/O** | Non-blocking I/O model where threads are not held while waiting for network or disk; enables higher concurrency with fewer threads |

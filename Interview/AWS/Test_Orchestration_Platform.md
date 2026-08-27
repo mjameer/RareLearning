@@ -260,7 +260,7 @@ Worker has its **own independent lifecycle** — it exists before any suite is s
 
 **`status`** — The current lifecycle state of the worker node: `idle` (available to pick up work), `busy` (currently executing one or more test cases), `dead` (heartbeat missed — Worker Monitor has declared it gone). The Orchestrator and Worker Monitor both read this to make decisions. The queue-based pull model means workers don't strictly need to be `idle` in the DB before picking up work — but this status is used for capacity planning dashboards and for knowing not to assign new tasks to a worker that's already dead.
 
-**`capacity`** — The maximum number of test cases this worker can run concurrently. Defaults to `1` because test isolation is safest when one worker runs one test at a time (no shared state, no port conflicts). Higher values can be set for lightweight unit tests where the overhead of full isolation isn't worth it. The Orchestrator uses this when deciding how many tasks to dispatch to a given worker pool.
+**`capacity`** — The maximum number of test cases this worker can run concurrently. Defaults to `1` because test isolation is safest when one worker runs one test at a time (no shared state, no port conflicts). Higher values can be set for lightweight unit tests where full isolation isn't necessary. This is **self-regulated by the worker itself** — the worker reads its own capacity on startup and pulls that many messages from the queue simultaneously. The Orchestrator does not push tasks or track which worker is free; workers pull when ready. Capacity `4` means the worker holds 4 queue messages at once, executes them in parallel threads/processes, and ACKs each message only when that test completes.
 
 **`tags`** — A string array of capability labels, e.g. `{gpu, linux, cuda-12, high-memory}`. At fan-out time, the Orchestrator reads `required_tags` from the suite's `config` and routes each test case's task message to the queue that matches workers bearing those tags. Without tags, every test would have to run on a generic worker — GPU tests would fail because no CUDA drivers are present, Windows tests would fail because the OS is wrong. Tags are the routing mechanism that makes multi-environment testing possible.
 
@@ -493,33 +493,70 @@ Body: { status: "idle" | "busy", current_test_id: string | null }
 Client / CI Pipeline
         │
         ▼
-   API Gateway  (auth, rate limiting, routing)
-   ┌────────────────────────────────────────────────┐
-   │           Orchestrator Service                 │
-   │  - Accepts suite submissions                   │
-   │  - Breaks suite into individual TestCases      │
-   │  - Enqueues tasks                              │
-   │  - Tracks suite + test state                   │
-   └────────────┬───────────────────────────────────┘
-                │ enqueue
-                ▼
-         Task Queue (Kafka / SQS)
-                │
-         ┌──────┴──────┐
-         ▼             ▼
-    Worker Pool   Worker Pool    (auto-scaling)
-    [Worker 1]    [Worker 2] ...
-         │
-         │ write result
-         ▼
-   Result Collector Service
-         │
-         ▼
-     Primary DB (PostgreSQL)
-         │
-         ▼
-   Report Service  ──►  Cache (Redis)
+┌──────────────────────────────┐
+│         API Gateway           │  validates JWT, rate limits,
+│                               │  routes to correct service
+└──────────────┬────────────────┘
+               │  (only auth + routing happen here)
+               ▼
+┌──────────────────────────────────────────────┐
+│           Orchestrator Service                │
+│                                               │
+│  1. Accepts suite submission (POST /suites)   │
+│  2. Writes TestSuite + TestCases to DB        │
+│  3. Fans out: 1 task message per TestCase     │
+│  4. Tracks suite + test state                 │
+└──────────────────┬────────────────────────────┘
+                   │ enqueue (1 msg per TestCase)
+                   ▼
+    ┌──────────────────────────────┐
+    │      Task Queue (Kafka/SQS)   │
+    │  [queue:linux] [queue:gpu]... │
+    └──────┬──────────────┬─────────┘
+           │              │  workers pull when ready (pull model)
+           ▼              ▼
+    ┌────────────┐  ┌────────────┐   ... (auto-scaled pool)
+    │  Worker 1  │  │  Worker 2  │
+    │ (container)│  │ (container)│
+    │ capacity:N │  │ capacity:N │
+    └─────┬──────┘  └─────┬──────┘
+          │               │
+          └───────┬────────┘
+                  │ publish result
+                  ▼
+    ┌──────────────────────────┐
+    │    Result Collector       │  idempotent write via
+    │       Service             │  (test_case_id, task_attempt_id)
+    └──────────────┬────────────┘
+                   │ writes results + updates test_case status
+                   ▼
+            ┌─────────────┐
+            │  PostgreSQL  │  (primary data store)
+            └──────┬───────┘
+                   │
+        ┌──────────┴──────────┐
+        │                     │
+        ▼                     ▼
+┌──────────────┐    ┌──────────────────────┐
+│ Report Service│    │    Status Service     │
+│ (generates    │    │ (serves live status) │
+│  final report)│    │ pushes via SSE       │
+└──────┬────────┘    └──────────┬───────────┘
+       │                        │
+       ▼                        ▼
+  Redis (cache)          Kafka topic
+  GET /report            suite.{id}.events
+                              │
+                              ▼
+                        Client Dashboard (SSE)
+
+┌──────────────────────────┐
+│     Worker Monitor        │  heartbeat checker; marks dead
+│  (background process)     │  workers, requeues orphaned tasks
+└──────────────────────────┘
 ```
+
+> **Important:** The API Gateway does **not** break suites into tasks, enqueue anything, or touch the database. It is a thin validation and routing layer only. All business logic — fan-out, state tracking, retry decisions — lives in the Orchestrator and downstream services.
 
 ---
 
@@ -537,10 +574,11 @@ Client / CI Pipeline
 
 #### FR2: Schedule and Distribute Tests
 
-- Workers are long-running containers (or ephemeral VMs) that **poll / consume** from the Task Queue
-- Each worker picks up one task message (one TestCase), marks itself `busy`, updates the TestCase `status = running` and `assigned_worker_id`
-- Worker executes the test in an **isolated environment** (Docker container within the worker, or the worker itself is containerized)
-- Worker publishes the result to a **Result Topic** (Kafka) or writes directly to the **Result Collector Service**
+- Workers are long-running containers that **pull / consume** from the Task Queue — this is a **pull model**, not push
+- Each worker pulls up to `capacity` messages at once (default 1, higher for lightweight tests)
+- For each task, the worker updates the TestCase `status = running` and `assigned_worker_id = self`
+- Worker executes the test in isolation (either the container itself is the isolation boundary, or the worker spawns a child process per test)
+- Worker publishes the result to the **Result Collector Service** when done, then immediately pulls the next task — no idle waiting
 
 **Worker Assignment — Why a Queue?**
 - Queue provides natural load distribution — workers pull when they're ready (pull model, not push)
@@ -573,58 +611,11 @@ Client / CI Pipeline
 
 **Why PostgreSQL?**
 - Strong consistency for test results and suite state
-- ACID transactions for state transitions (e.g., marking a suite complete only after all tests finish — use a counter or a transaction)
+- ACID transactions for state transitions (e.g., marking a suite complete only after all tests finish)
 - Relational model fits perfectly: Suite → TestCase → TestResult
+- `JSONB` support for flexible test config storage
 
-**Tables:**
-
-```sql
--- TestSuites
-CREATE TABLE test_suites (
-  id UUID PRIMARY KEY,
-  pipeline_id VARCHAR,
-  commit_sha VARCHAR,
-  repo VARCHAR,
-  config JSONB,
-  status VARCHAR,           -- pending / running / completed / failed
-  submitted_at TIMESTAMPTZ,
-  completed_at TIMESTAMPTZ
-);
-
--- TestCases
-CREATE TABLE test_cases (
-  id UUID PRIMARY KEY,
-  suite_id UUID REFERENCES test_suites(id),
-  name VARCHAR,
-  file_path VARCHAR,
-  status VARCHAR,           -- pending / running / passed / failed / retrying
-  retry_count INT DEFAULT 0,
-  assigned_worker_id UUID,
-  created_at TIMESTAMPTZ
-);
-
--- TestResults
-CREATE TABLE test_results (
-  id UUID PRIMARY KEY,
-  test_case_id UUID REFERENCES test_cases(id),
-  worker_id UUID,
-  exit_code INT,
-  stdout TEXT,
-  stderr TEXT,
-  duration_ms INT,
-  started_at TIMESTAMPTZ,
-  finished_at TIMESTAMPTZ
-);
-
--- Workers
-CREATE TABLE workers (
-  id UUID PRIMARY KEY,
-  status VARCHAR,           -- idle / busy / dead
-  capacity INT,
-  tags VARCHAR[],
-  last_heartbeat_at TIMESTAMPTZ
-);
-```
+> Full schema with all constraints, indexes, and column types is defined in Section 2 (Table & Column Details → Full Schema DDL). The key tables are `test_suites`, `test_cases`, `test_results`, `workers`, and `reports`.
 
 ---
 
@@ -937,6 +928,6 @@ A well-designed test orchestration system is useless if you can't see what it's 
 | **Test Case** | A single atomic unit of test execution — one test file or one test function |
 | **Test Suite** | A collection of test cases submitted together as one job |
 | **Visibility Timeout** | See *Message Visibility Timeout* |
-| **Worker** | A compute unit (container/VM) that pulls tasks from the queue and executes tests |
+| **Worker** | A single container/process that pulls tasks from the queue and executes tests. One physical machine (node) runs many workers. Worker = container, not machine. |
 | **Worker Monitor** | Background service that detects dead workers via missed heartbeats and triggers task recovery |
 | **Worker Tagging** | Labeling workers with capabilities (e.g., `gpu`, `linux`) to route specialized tasks correctly |

@@ -1,7 +1,5 @@
 60+ interviews. These System Design topics came up the most.
-
 Last week I shared the top 10 Java questions. This is the System Design batch.
-
 If you're prepping for senior backend roles, these are non-negotiable:
 
 1. "Design a URL Shortener"

@@ -818,7 +818,7 @@ Tools: k6, Gatling, Locust, wrk
 ```
 Know these numbers for your system:
   Max sustainable RPS before latency climbs
-  Memory per request × max concurrent requests = minimum heap needed
+  Memory per request × max concurrent requests = maximum heap needed
   DB connections needed at peak load
   Thread pool size needed at peak load
 

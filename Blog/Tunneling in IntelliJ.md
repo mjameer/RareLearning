@@ -214,6 +214,16 @@ chmod +x tunnel.sh
 **"How does multiplexing work here?"**
 > All 18 `-L` tunnels share a single TCP connection to the remote. SSH multiplexes them internally — same concept as HTTP/2 streams or gRPC channels over one connection.
 
+
+ssh -fN -L 8432 : localhost : 5432    root@192.168.1.100
+                  ^^^^^^^^^^^^^^^^^        ^^^^^^^^^^^^^^
+                  REMOTE SIDE              REMOTE SERVER
+                  
+         ^^^^
+         LOCAL SIDE
+         (your WSL)
+
+         
 ### Key Points to Memorize
 
 ```
